@@ -2,7 +2,101 @@
 
 Модуль собирает записи с HTML-страницы. Пользователь задаёт адрес, при необходимости селектор карточки и правила CSS или XPath, смотрит предпросмотр и подтверждает план. Только после этого основной сбор пишет записи и даёт скачать JSON или CSV.
 
-Поиск сайтов по теме, обход ссылок, клики по карточке и языковая модель в эту версию не входят. Одновременно выполняется один сбор. Первая версия рассчитана на Windows и Linux.
+После подтверждения плана можно собирать только указанные страницы или обходить ссылки в пределах сайта, глубины и лимита страниц. Поиск сайтов по теме, клики по карточке и языковая модель в эту версию не входят. Одновременно выполняется один сбор. Первая версия рассчитана на Windows и Linux.
+
+## Архитектура текущей версии
+
+Все задачи идут через общую очередь `scout`. `fetch`, `crawl` и `extract` — обработчики типов задач внутри Python-воркера. Диспетчер публикует готовые задачи, а Celery Beat каждые 30 секунд ставит в ту же очередь задачу сверки и восстановления просроченных аренд.
+
+```mermaid
+flowchart TB
+    USER["Пользователь"]
+
+    subgraph CONTROL["Управление модулем SCOUT"]
+        UI["Веб-интерфейс Vue"]
+        CLI["Командная строка CLI"]
+        API["Django API"]
+        COORD["Координатор запуска"]
+        STATE[("База состояния: задания, версии плана, запуски и задачи")]
+        DISPATCH["Диспетчер задач и восстановление после сбоев"]
+        BEAT["Celery Beat: проверка каждые 30 секунд"]
+    end
+
+    subgraph EXECUTION["Исполнение задач — общая очередь scout"]
+        QUEUE["Очередь Celery scout"]
+        WORKER["Воркер: выбор обработчика задачи"]
+        FETCH["Обработчик загрузки: fetch"]
+        CRAWL["Обработчик обхода ссылок: crawl"]
+        EXTRACT["Обработчик извлечения данных: extract"]
+    end
+
+    subgraph DATA["Источники и данные"]
+        WEB["Внешние HTML-сайты"]
+        SNAPSHOTS[("Сохранённые HTML-снимки")]
+        FRONTIER[("CrawlURL: адреса и состояние обхода")]
+        RECORDS[("Record и Evidence: записи и происхождение полей")]
+    end
+
+    subgraph OUTPUT["Представление результатов"]
+        EXPORT["Сервис экспорта JSON и CSV"]
+        MEDIA["media_api: хранение файлов"]
+    end
+
+    USER --> UI
+    USER --> CLI
+    UI -->|"Настройки и команды"| API
+    API --> COORD
+    CLI --> COORD
+
+    COORD -->|"План, подтверждение, запуск, пауза и отмена"| STATE
+    COORD -->|"Публикация готовых задач"| DISPATCH
+    STATE -->|"Готовые задачи и сроки аренды"| DISPATCH
+    BEAT -->|"dispatch_scout_pending"| QUEUE
+    DISPATCH -->|"execute_scout_task"| QUEUE
+
+    QUEUE --> WORKER
+    WORKER -->|"dispatch_scout_pending"| DISPATCH
+    WORKER -->|"Тип fetch"| FETCH
+    WORKER -->|"Тип crawl"| CRAWL
+    WORKER -->|"Тип extract"| EXTRACT
+    WORKER -->|"Статусы, попытки и результаты выполнения"| STATE
+
+    FETCH -->|"HTTP-запрос"| WEB
+    WEB -->|"HTML"| FETCH
+    FETCH -->|"Сохранение страницы"| SNAPSHOTS
+    FETCH -->|"Постановка следующих задач"| STATE
+
+    SNAPSHOTS -->|"HTML для поиска ссылок"| CRAWL
+    CRAWL -->|"Нормализация URL, фильтры и глубина"| FRONTIER
+    FRONTIER -->|"Новые задачи загрузки"| STATE
+
+    SNAPSHOTS -->|"HTML для разбора"| EXTRACT
+    STATE -->|"Закреплённые правила CSS и XPath"| EXTRACT
+    EXTRACT -->|"Значения полей и доказательства"| RECORDS
+
+    STATE -->|"Прогресс и журнал"| API
+    RECORDS -->|"Таблица результатов"| API
+    API -->|"Предпросмотр, состояние и результаты"| UI
+
+    API -->|"Запрос выгрузки завершённого сбора"| EXPORT
+    RECORDS --> EXPORT
+    EXPORT -->|"Файл JSON или CSV"| MEDIA
+    MEDIA -->|"Путь сохранённого файла"| EXPORT
+    EXPORT -->|"Подписанная ссылка"| API
+    API -->|"Ссылка на скачивание"| UI
+
+    classDef control fill:#eaf1f8,stroke:#40566f,color:#111111;
+    classDef handler fill:#edf5ed,stroke:#466647,color:#111111;
+    classDef storage fill:#f5f5f5,stroke:#666666,color:#111111;
+
+    class API,COORD,DISPATCH,BEAT control;
+    class FETCH,CRAWL,EXTRACT handler;
+    class STATE,SNAPSHOTS,FRONTIER,RECORDS storage;
+```
+
+База состояния, `CrawlURL`, `Record` и `Evidence` на схеме показаны отдельными логическими блоками, но хранятся в одной БД модуля. HTML-снимки лежат в `virtual_env/cache/scout/snapshots/`, файлы выгрузки — в `media_api`. Основной сбор запускается только после подтверждения хеша версии плана; предварительная загрузка страницы нужна для предпросмотра до подтверждения.
+
+План развития описан в [PARSER_ARCHITECTURE.md](docs/PARSER_ARCHITECTURE.md), реализованные возможности — в [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md), результаты проверок — в [PHASE_2A_REPORT.md](docs/PHASE_2A_REPORT.md).
 
 ## Зависимости
 
