@@ -98,6 +98,14 @@ flowchart TB
 
 План развития описан в [PARSER_ARCHITECTURE.md](docs/PARSER_ARCHITECTURE.md), реализованные возможности — в [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md), результаты проверок — в [PHASE_2A_REPORT.md](docs/PHASE_2A_REPORT.md).
 
+## Проектирование и дальнейшая работа
+
+Сейчас уточняются UX и структура Scout; дополнительные машины оставлены на будущее.
+
+- [AGENTS.md](AGENTS.md) — инструкции; [BACKLOG.md](BACKLOG.md) — задачи и ответственные.
+- [FRONTEND](docs/teams/FRONTEND.md) и [SYSTEM](docs/teams/SYSTEM.md) — с чего начать каждой команде.
+- [Карта документации](docs/README.md) — решения, UX, дизайн, API и текущее состояние.
+
 ## Зависимости
 
 Обязательных модулей нет. Очередь — Celery платформы, файлы выгрузки — media_api, пользователи и меню — ядро.
