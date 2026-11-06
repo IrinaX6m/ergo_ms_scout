@@ -3,6 +3,7 @@
 from datetime import timedelta
 
 from django.db import transaction
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from ..models import CrawlURL, PageSnapshot, Run, Task
@@ -25,6 +26,7 @@ from .page_links import iter_hrefs
 from .url_norm import host_allowed, resolve_url, rules_match, url_key
 
 _COUNTING = (CRAWL_QUEUED, CRAWL_ACTIVE, CRAWL_DONE, CRAWL_FAILED)
+_DISCOVERY_BATCH_SIZE = 250
 
 
 def blocks_completion(run: Run) -> bool:
@@ -64,8 +66,73 @@ def discover(run: Run, snapshot: PageSnapshot, body: bytes) -> None:
     depth = 0 if parent is None else parent.depth + 1
     page = snapshot.final_url or snapshot.source_url
     hrefs, base = iter_hrefs(body, snapshot.content_type, snapshot.charset, page)
+    for offset in range(0, len(hrefs), _DISCOVERY_BATCH_SIZE):
+        batch = hrefs[offset:offset + _DISCOVERY_BATCH_SIZE]
+        if len(batch) > 1 and _register_batch(run, crawl, batch, base=base, depth=depth, parent=parent):
+            continue
+        for href in batch:
+            remember(run, href, base=base, depth=depth, parent=parent)
+
+
+def _register_batch(run: Run, crawl: dict, hrefs: list[str], *, base: str, depth: int, parent) -> bool:
+    # Под блокировкой Run новые адреса и их задачи записываются в одной транзакции.
+    links = {}
     for href in hrefs:
-        remember(run, href, base=base, depth=depth, parent=parent)
+        normalized, reason = resolve_url(href, base, crawl.get('drop_query'))
+        key = url_key(normalized or href or reason)
+        links.setdefault(key, (href, normalized, reason))
+
+    frontier = CrawlURL.objects.filter(run=run)
+    existing = dict(frontier.filter(url_key__in=links).values_list('url_key', 'depth'))
+    # Короткий путь может открыть дочерние ссылки, а повторное использование снимка — изменить бюджет.
+    if any(previous_depth > depth for previous_depth in existing.values()):
+        return False
+    new_links = {key: link for key, link in links.items() if key not in existing}
+    if not new_links:
+        return True
+    urls = [normalized for _, normalized, _ in new_links.values() if normalized is not None]
+    if PageSnapshot.objects.filter(run=run, source_url__in=urls).exists():
+        return False
+
+    from .crawl_budget import snapshot_bytes
+
+    counts = frontier.aggregate(total=Count('pk'), used=Count('pk', filter=Q(state__in=_COUNTING)))
+    frontier_size = counts['total']
+    used = counts['used']
+    total_bytes = snapshot_bytes(run)
+    capacity = int(crawl.get('frontier_cap') or 1)
+    pending_state = CRAWL_ACTIVE if run.status == RUN_RUNNING else CRAWL_QUEUED
+    rows = []
+    for key, (href, normalized, reason) in new_links.items():
+        if frontier_size >= capacity:
+            _stop(run, 'frontier')
+            break
+        if normalized is not None:
+            reason = _link_rejection(crawl, normalized, depth)
+            if not reason and _budget_closed(run, crawl, usage=(used, frontier_size, total_bytes)):
+                reason = run.stop_reason or 'limit'
+        if not reason:
+            used += 1
+        frontier_size += 1
+        url = normalized or href or reason
+        rows.append(CrawlURL(
+            run=run, url_key=key, depth=depth, parent=parent,
+            original_url=(url if reason else href or url)[:2000],
+            normalized_url=url[:2000] if reason else url,
+            state=CRAWL_SKIPPED if reason else pending_state, skip_reason=reason or '',
+        ))
+
+    CrawlURL.objects.bulk_create(rows)
+    tasks = {
+        f'fetch:{row.url_key}': _fetch_defaults(row) for row in rows if row.state == CRAWL_ACTIVE
+    }
+    if tasks:
+        existing_tasks = set(Task.objects.filter(run=run, idempotency_key__in=tasks).values_list('idempotency_key', flat=True))
+        Task.objects.bulk_create([
+            Task(run=run, idempotency_key=key, **defaults)
+            for key, defaults in tasks.items() if key not in existing_tasks
+        ])
+    return True
 
 
 def release_queued(run: Run) -> None:
@@ -89,14 +156,9 @@ def remember(run: Run, raw_url: str, *, base: str, depth: int, parent) -> CrawlU
     if CrawlURL.objects.filter(run=run).count() >= int(crawl.get('frontier_cap') or 1):
         _stop(run, 'frontier')
         return None
-    if depth > int(crawl.get('max_depth') or 0):
-        return _skip(run, normalized, 'depth', depth, parent, key)
-    if not host_allowed(normalized, crawl.get('allowed_hosts')):
-        return _skip(run, normalized, 'host', depth, parent, key)
-    if not rules_match(normalized, crawl.get('visit')):
-        return _skip(run, normalized, 'visit', depth, parent, key)
-    if _budget_closed(run, crawl):
-        return _skip(run, normalized, run.stop_reason or 'limit', depth, parent, key)
+    reason = _admit(run, crawl, normalized, depth)
+    if reason is not None:
+        return _skip(run, normalized, reason, depth, parent, key)
     row = CrawlURL.objects.create(
         run=run,
         original_url=(raw_url or normalized)[:2000],
@@ -145,14 +207,21 @@ def _revisit(run: Run, existing: CrawlURL, depth: int, parent, crawl: dict, norm
 
 
 def _admit(run: Run, crawl: dict, normalized: str, depth: int) -> str | None:
+    reason = _link_rejection(crawl, normalized, depth)
+    if reason is not None:
+        return reason
+    if _budget_closed(run, crawl):
+        return run.stop_reason or 'limit'
+    return None
+
+
+def _link_rejection(crawl: dict, normalized: str, depth: int) -> str | None:
     if depth > int(crawl.get('max_depth') or 0):
         return 'depth'
     if not host_allowed(normalized, crawl.get('allowed_hosts')):
         return 'host'
     if not rules_match(normalized, crawl.get('visit')):
         return 'visit'
-    if _budget_closed(run, crawl):
-        return run.stop_reason or 'limit'
     return None
 
 
@@ -185,23 +254,28 @@ def _spread(run: Run, row: CrawlURL) -> None:
     discover(run, snapshot, body)
 
 
-def _budget_closed(run: Run, crawl: dict) -> bool:
+def _budget_closed(run: Run, crawl: dict, *, usage: tuple[int, int, int] | None = None) -> bool:
     if run.stop_reason in ('time', 'bytes', 'frontier'):
         return True
-    used = CrawlURL.objects.filter(run=run, state__in=_COUNTING).count()
+    used, frontier_size, total_bytes = usage if usage is not None else (None, None, None)
+    if used is None:
+        used = CrawlURL.objects.filter(run=run, state__in=_COUNTING).count()
     if used >= int(crawl.get('max_pages') or 1):
         _stop(run, 'max_pages')
         return True
-    if CrawlURL.objects.filter(run=run).count() >= int(crawl.get('frontier_cap') or 1):
+    if frontier_size is None:
+        frontier_size = CrawlURL.objects.filter(run=run).count()
+    if frontier_size >= int(crawl.get('frontier_cap') or 1):
         _stop(run, 'frontier')
         return True
     started = run.started_at or timezone.now()
     if timezone.now() > started + timedelta(seconds=int(crawl.get('max_seconds') or 1)):
         _stop(run, 'time')
         return True
-    from .crawl_budget import snapshot_bytes
-    total = snapshot_bytes(run)
-    if total >= int(crawl.get('max_total_bytes') or 1):
+    if total_bytes is None:
+        from .crawl_budget import snapshot_bytes
+        total_bytes = snapshot_bytes(run)
+    if total_bytes >= int(crawl.get('max_total_bytes') or 1):
         _stop(run, 'bytes')
         return True
     return False
@@ -322,15 +396,19 @@ def _schedule_fetch(run: Run, row: CrawlURL) -> None:
     Task.objects.get_or_create(
         run=run,
         idempotency_key=f'fetch:{row.url_key}',
-        defaults={
-            'kind': TASK_FETCH,
-            'status': TASK_PENDING,
-            'payload': {'url': row.normalized_url, 'crawl_public_id': str(row.public_id)},
-            'fencing_token': 1,
-        },
+        defaults=_fetch_defaults(row),
     )
     row.state = CRAWL_ACTIVE
     row.save(update_fields=['state'])
+
+
+def _fetch_defaults(row: CrawlURL) -> dict:
+    return {
+        'kind': TASK_FETCH,
+        'status': TASK_PENDING,
+        'payload': {'url': row.normalized_url, 'crawl_public_id': str(row.public_id)},
+        'fencing_token': 1,
+    }
 
 
 def _schedule_crawl(run: Run, snapshot: PageSnapshot) -> None:

@@ -189,6 +189,49 @@ class CrawlTests(TestCase):
         self.assertEqual(Task.objects.filter(run=run, kind='fetch', status='succeeded').count(), 2)
         self.assertEqual(Record.objects.filter(run=run).count(), 2)
 
+    def test_discovery_batches_keep_link_order_and_limits(self):
+        run = self._open('/quiet', max_pages=3, frontier_cap=6)
+        snapshot = run.snapshots.get()
+        hrefs = ('/new-a', '/new-a#duplicate', '/guide.pdf', '/new-b', '/over-limit',
+                 'http://evil.test/no', '/over-frontier', '/new-b#duplicate')
+        body = ''.join(f'<a href="{href}">link</a>' for href in hrefs).encode()
+
+        with patch('modules.scout.api.services.frontier._DISCOVERY_BATCH_SIZE', 3):
+            with CaptureQueriesContext(connection) as queries:
+                discover(run, snapshot, body)
+            discover(run, snapshot, body)
+
+        self.assertEqual(sum('INSERT INTO "scout_crawlurl"' in query['sql'] for query in queries), 2)
+        self.assertEqual(sum('INSERT INTO "scout_task"' in query['sql'] for query in queries), 2)
+        rows = list(run.crawl_urls.exclude(snapshot=snapshot).order_by('pk'))
+        self.assertEqual([(row.normalized_url, row.state, row.skip_reason) for row in rows], [
+            (f'{self.origin}/new-a', 'active', ''),
+            ('/guide.pdf', 'skipped', 'document'),
+            (f'{self.origin}/new-b', 'active', ''),
+            (f'{self.origin}/over-limit', 'skipped', 'max_pages'),
+            ('http://evil.test/no', 'skipped', 'host'),
+        ])
+        payloads = list(
+            run.tasks.filter(kind=TASK_FETCH, status=TASK_PENDING).order_by('pk').values_list('payload', flat=True)
+        )
+        self.assertEqual(payloads, [
+            {'url': row.normalized_url, 'crawl_public_id': str(row.public_id)}
+            for row in (rows[0], rows[2])
+        ])
+        run.refresh_from_db()
+        self.assertEqual(run.stop_reason, 'max_pages')
+
+    def test_discovery_batch_waits_to_schedule_fetches_during_pause(self):
+        run = self._open('/quiet')
+        run.status = 'pausing'
+        run.save(update_fields=['status'])
+        discover(run, run.snapshots.get(), b'<a href="/new-a">A</a><a href="/new-b">B</a>')
+
+        self.assertEqual(list(run.crawl_urls.filter(state='queued').order_by('pk').values_list('normalized_url', flat=True)), [
+            f'{self.origin}/new-a', f'{self.origin}/new-b',
+        ])
+        self.assertFalse(run.tasks.filter(kind=TASK_FETCH, status=TASK_PENDING).exists())
+
     def test_catalog_is_not_extracted_and_pagination_is_kept(self):
         run = self._crawl(
             '/cat',
@@ -554,10 +597,11 @@ class CrawlTests(TestCase):
             state='skipped',
             skip_reason='depth',
         )
-        remember(run, target, base=self.origin, depth=2, parent=None)
+        seed = run.snapshots.get(source_url=f'{self.origin}/quiet')
+        discover(run, seed, b'<a href="/target">short path</a><a href="/target#duplicate">duplicate</a>')
         leaf_row = run.crawl_urls.get(normalized_url=leaf)
-        self.assertEqual(run.crawl_urls.get(normalized_url=target).depth, 2)
-        self.assertEqual(leaf_row.depth, 3)
+        self.assertEqual(run.crawl_urls.get(normalized_url=target).depth, 1)
+        self.assertEqual(leaf_row.depth, 2)
         self.assertEqual(leaf_row.state, 'active')
         self.assertEqual(Task.objects.filter(run=run, idempotency_key=f'fetch:{leaf_row.url_key}').count(), 1)
         self.assertEqual(run.snapshots.filter(source_url=target).count(), 1)
