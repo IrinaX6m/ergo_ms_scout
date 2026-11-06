@@ -1,6 +1,9 @@
 export const scoutEndpoints = {
   health: 'scout/health/',
   jobs: 'scout/jobs/',
+  visualSnapshots: 'scout/visual-snapshots/',
+  visualSnapshot: (publicId) => `scout/visual-snapshots/${publicId}/`,
+  checkVisualSnapshot: (publicId) => `scout/visual-snapshots/${publicId}/check/`,
   job: (publicId) => `scout/jobs/${publicId}/`,
   explore: (publicId) => `scout/jobs/${publicId}/explore/`,
   run: (publicId) => `scout/runs/${publicId}/`,

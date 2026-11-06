@@ -11,6 +11,7 @@ import { apiClient } from '@/js/api/manager'
 import ScoutPage from '../components/ScoutPage.vue'
 import locales from '../js/locales.js'
 import '../styles/scout-workflow.scss'
+import { installVisualFixture } from './visual-fixture.js'
 
 const jobId = '11111111-1111-4111-8111-111111111111'
 const runId = '22222222-2222-4222-8222-222222222222'
@@ -107,6 +108,7 @@ apiClient.post = async (url, body) => {
   if (action === 'cancel') fixture.run.status = 'cancelled'
   return result(fixture.run || {})
 }
+installVisualFixture(apiClient, fixture, result)
 window.__scoutTest = fixture
 window.addEventListener('ergo:open-user-settings', () => {
   fixture.systemOpened += 1

@@ -69,6 +69,7 @@ export function useScoutWorkflow() {
   const loadedJob = ref('')
   const exportKind = ref('json')
   const errors = reactive({ url: '', card: '', fields: [] })
+  const visualPlanValid = ref(false)
   let context = 0
   let operation = 0
   let jobRequest = 0
@@ -359,7 +360,13 @@ export function useScoutWorkflow() {
   }
 
   async function checkPage() {
-    if (mode.value !== 'manual' || loading.value || !validate()) return
+    if (
+      !['manual', 'visual'].includes(mode.value) ||
+      (mode.value === 'visual' && !visualPlanValid.value) ||
+      loading.value ||
+      !validate()
+    )
+      return
     const owner = context
     const currentOperation = ++operation
     const version = draftVersion
@@ -589,6 +596,7 @@ export function useScoutWorkflow() {
   })
 
   return {
+    visualPlanValid,
     form,
     errors,
     run,

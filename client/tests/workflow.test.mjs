@@ -3,6 +3,8 @@ import test from 'node:test'
 import { fieldProblems, planMatchesRun, validSource, workflowStage } from '../js/workflowState.js'
 import { displayValue, flattenValues } from '../js/recordTable.js'
 import workspaceLocales from '../js/workspaceLocales.js'
+import visualLocales from '../js/visualLocales.js'
+import { matchSummary, visualPlanStamp } from '../js/visualState.js'
 
 test('a preview and confirmation remain separate from running collection', () => {
   const run = { status: 'awaiting_confirmation', approved: false }
@@ -88,4 +90,41 @@ test('new interface keys exist in all supported languages', () => {
       .sort()
   assert.deepEqual(keys(workspaceLocales.en), keys(workspaceLocales.ru))
   assert.deepEqual(keys(workspaceLocales.fr), keys(workspaceLocales.ru))
+  assert.deepEqual(keys(visualLocales.en), keys(visualLocales.ru))
+  assert.deepEqual(keys(visualLocales.fr), keys(visualLocales.ru))
+})
+
+test('visual validation preserves missing rows and detects ambiguous single fields', () => {
+  const result = {
+    field: { name: 'price' },
+    rows: [
+      { match_count: 0, match_node_ids: [] },
+      { match_count: 2, match_node_ids: ['n1', 'n2'] },
+      { match_count: 1, match_node_ids: ['n2'] },
+    ],
+  }
+  assert.deepEqual(matchSummary(result), {
+    matches: 3,
+    missing: 1,
+    multiple: true,
+    nodeIds: ['n1', 'n2'],
+  })
+  assert.deepEqual(matchSummary({ rows: [{ node_id: 'n3' }] }).nodeIds, ['n3'])
+})
+
+test('visual acceptance is invalidated by source, card and field changes', () => {
+  const form = {
+    url: 'https://example.com/',
+    recordMode: 'cards',
+    recordKind: 'css',
+    recordSelector: 'article',
+    fields: [{ name: 'price', selector: '.price', scope: 'record' }],
+  }
+  const stamp = visualPlanStamp(form)
+  for (const changes of [
+    { url: 'https://other.example/' },
+    { recordSelector: 'li' },
+    { fields: [{ name: 'price', selector: '.other', scope: 'record' }] },
+  ])
+    assert.notEqual(visualPlanStamp({ ...form, ...changes }), stamp)
 })

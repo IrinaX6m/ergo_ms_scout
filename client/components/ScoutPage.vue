@@ -15,11 +15,13 @@ import ScoutModePicker from './ScoutModePicker.vue'
 import ScoutPlanSummary from './ScoutPlanSummary.vue'
 import ScoutRecordsTable from './ScoutRecordsTable.vue'
 import ScoutRuleEditor from './ScoutRuleEditor.vue'
+import ScoutVisualEditor from './ScoutVisualEditor.vue'
 import ScoutCrawlSummary from './ScoutCrawlSummary.vue'
 
 const { t } = useAppI18n()
 const {
   form,
+  visualPlanValid,
   errors,
   run,
   records,
@@ -175,7 +177,10 @@ function openSystemSettings() {
         {{ t('scout.workspace.retry') }}
       </button>
     </div>
-    <div class="scout-workspace">
+    <div
+      class="scout-workspace"
+      :class="{ 'scout-workspace--visual': stage === 'source' && mode === 'visual' }"
+    >
       <div class="scout-main">
         <FormCard v-if="stage === 'mode'">
           <div class="scout-panel-content">
@@ -225,6 +230,14 @@ function openSystemSettings() {
               </button>
             </div>
           </template>
+          <ScoutVisualEditor
+            v-else-if="mode === 'visual'"
+            v-model="form"
+            :disabled="loading"
+            @valid="visualPlanValid = $event"
+            @preview="checkPage"
+            @manual="mode = 'manual'"
+          />
           <FormCard v-else>
             <FormField :label="t('scout.url')" label-for="scout-mode-source"
               ><input id="scout-mode-source" v-model="form.url" class="form-control" type="url"
