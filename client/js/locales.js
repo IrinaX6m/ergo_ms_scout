@@ -1,6 +1,9 @@
+import workspaceLocales from './workspaceLocales.js'
+
 export default {
   ru: {
     scout: {
+      workspace: workspaceLocales.ru,
       routes: { home: 'Сбор данных' },
       title: 'SCOUT',
       lead: 'Укажите адрес страницы и правила полей. Основной сбор начнётся только после подтверждения.',
@@ -122,6 +125,7 @@ export default {
   },
   en: {
     scout: {
+      workspace: workspaceLocales.en,
       routes: { home: 'Data collection' },
       title: 'SCOUT',
       lead: 'Enter a page address and field rules. The main collection starts only after confirmation.',
@@ -243,6 +247,7 @@ export default {
   },
   fr: {
     scout: {
+      workspace: workspaceLocales.fr,
       routes: { home: 'Collecte de données' },
       title: 'SCOUT',
       lead: 'Indiquez l’adresse de la page et les règles des champs. La collecte principale ne démarre qu’après confirmation.',

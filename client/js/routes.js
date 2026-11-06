@@ -1,3 +1,5 @@
+import '../styles/scout-workflow.scss'
+
 const loadHome = () => import('../components/ScoutPage.vue')
 
 export default {
