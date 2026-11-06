@@ -24,8 +24,8 @@ function updateLimit(key, value) { limits.value = { ...limits.value, [key]: Numb
 
 <template>
   <div class="d-flex flex-wrap gap-3 py-2">
-    <label><input v-model="mode" type="radio" value="pages"> {{ t('scout.flow.pagesOnly') }}</label>
-    <label><input v-model="mode" type="radio" value="site"> {{ t('scout.flow.crawlSite') }}</label>
+    <label for="scout-crawl-pages"><input id="scout-crawl-pages" v-model="mode" type="radio" value="pages" name="scout-crawl-mode"> {{ t('scout.flow.pagesOnly') }}</label>
+    <label for="scout-crawl-site"><input id="scout-crawl-site" v-model="mode" type="radio" value="site" name="scout-crawl-mode"> {{ t('scout.flow.crawlSite') }}</label>
   </div>
   <template v-if="mode === 'site'">
     <FormField :label="t('scout.flow.allowedHosts')" label-for="scout-hosts"><input id="scout-hosts" v-model="hosts" class="form-control" type="text"></FormField>

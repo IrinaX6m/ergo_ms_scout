@@ -1,0 +1,482 @@
+.scout-workflow {
+  max-width: 1400px;
+  padding-block: 1.5rem 3rem;
+  color: var(--ui-text);
+  font-family: var(--font-family-base);
+  min-width: 0;
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+  }
+  .btn svg {
+    flex-shrink: 0;
+  }
+  summary {
+    cursor: pointer;
+    font-weight: 500;
+    padding-block: 0.45rem;
+  }
+  code,
+  .scout-code {
+    font-family: var(--font-family-mono);
+    overflow-wrap: anywhere;
+  }
+  fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .scout-muted {
+    color: var(--ui-text-muted);
+  }
+  .scout-warning {
+    color: var(--ui-warning);
+  }
+  .scout-eyebrow {
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    color: var(--ui-text-muted);
+    margin-bottom: 0.4rem;
+  }
+  .scout-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+  }
+  .scout-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .scout-toolbar > :first-child {
+    width: 9rem;
+  }
+  .scout-step-rail {
+    margin-bottom: 2rem;
+    min-width: 0;
+  }
+  .scout-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 15rem;
+    gap: 1.75rem;
+    align-items: start;
+  }
+  .scout-main,
+  .scout-sidebar {
+    min-width: 0;
+  }
+  .scout-panel-content {
+    padding: 1.5rem;
+  }
+  .scout-sidebar {
+    padding: 0.75rem 0;
+  }
+  .scout-sidebar-note {
+    padding-top: 1rem;
+    margin-top: 1rem;
+    border-top: 1px solid var(--ui-border);
+    font-size: 0.8125rem;
+    color: var(--ui-text-muted);
+  }
+  .scout-path {
+    padding-left: 1.2rem;
+    color: var(--ui-text-muted);
+    font-size: 0.875rem;
+  }
+  .scout-path li {
+    margin-bottom: 0.85rem;
+  }
+  .scout-modes {
+    display: grid;
+    gap: 0.875rem;
+  }
+  .scout-mode {
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr) 1.25rem;
+    gap: 0.875rem;
+    width: 100%;
+    padding: 1.125rem;
+    text-align: start;
+    background: var(--ui-surface);
+    color: var(--ui-text);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+  }
+  .scout-mode:hover:not(:disabled) {
+    background: var(--ui-surface-2);
+  }
+  .scout-mode--selected,
+  .scout-mode--selected:hover:not(:disabled) {
+    border-color: var(--ui-accent);
+    background: var(--ui-accent-soft);
+  }
+  .scout-mode:focus-visible,
+  .scout-value:focus-visible {
+    outline: 2px solid var(--ui-accent);
+    outline-offset: 3px;
+  }
+  .scout-mode__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    color: var(--ui-accent);
+    background: var(--ui-surface-2);
+    border-radius: var(--ui-radius-sm);
+  }
+  .scout-mode__copy {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+  }
+  .scout-mode__title {
+    font-weight: 600;
+  }
+  .scout-mode__description {
+    font-size: 0.8125rem;
+    color: var(--ui-text-muted);
+  }
+  .scout-mode__check {
+    color: var(--ui-accent);
+  }
+  .scout-mode__number {
+    color: var(--ui-text-muted);
+    font-size: 0.875rem;
+  }
+  .scout-availability {
+    justify-self: start;
+    font-size: 0.75rem;
+    color: var(--ui-text-muted);
+    border: 1px solid var(--ui-border);
+    border-radius: 0.25rem;
+    padding: 0.1rem 0.4rem;
+  }
+  .scout-source-heading,
+  .scout-section-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .scout-section {
+    margin-block: 1.5rem;
+  }
+  .scout-field-rule {
+    padding: 1rem;
+    margin-bottom: 0.875rem;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-surface);
+  }
+  .scout-field-rule__main {
+    display: grid;
+    grid-template-columns: minmax(7rem, 1fr) 7rem minmax(10rem, 1.5fr) auto;
+    align-items: end;
+    gap: 0.75rem;
+  }
+  .scout-input-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    min-width: 0;
+    margin: 0;
+    font-size: 0.8125rem;
+  }
+  .scout-input-label .form-control {
+    font-size: 0.875rem;
+  }
+  .scout-remove-field {
+    min-height: 2.375rem;
+  }
+  .scout-field-rule__options {
+    margin-top: 0.65rem;
+    font-size: 0.8125rem;
+    color: var(--ui-text-muted);
+  }
+  .scout-field-options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: start;
+    gap: 1rem;
+    padding-top: 0.5rem;
+  }
+  .scout-field-options > div {
+    min-width: 0;
+    flex: 1 1 12rem;
+  }
+  .scout-radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .scout-radio-group label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+  }
+  .scout-record-rule {
+    display: grid;
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+  .scout-crawl-editor {
+    border-block: 1px solid var(--ui-border);
+    padding-block: 0.65rem;
+  }
+  .scout-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.875rem;
+    padding-top: 1rem;
+  }
+  .scout-alert-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .scout-unavailable {
+    display: grid;
+    gap: 0.65rem;
+    background: var(--ui-surface-2);
+  }
+  .scout-unavailable > svg {
+    color: var(--ui-text-muted);
+  }
+  .scout-plan {
+    margin: 0;
+    display: grid;
+    gap: 1rem;
+    font-size: 0.8125rem;
+  }
+  .scout-plan dt {
+    font-weight: 400;
+    color: var(--ui-text-muted);
+    margin-bottom: 0.25rem;
+  }
+  .scout-plan dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
+  .scout-plan--expanded {
+    gap: 0;
+  }
+  .scout-plan--expanded > div {
+    display: grid;
+    grid-template-columns: 9rem minmax(0, 1fr);
+    gap: 1rem;
+    padding-block: 1rem;
+    border-bottom: 1px solid var(--ui-border);
+  }
+  .scout-plan-field {
+    display: grid;
+    gap: 0.2rem;
+    margin-bottom: 0.65rem;
+  }
+  .scout-plan-field:last-child {
+    margin-bottom: 0;
+  }
+  .scout-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+    margin-block: 1.5rem 2rem;
+  }
+  .scout-stats > div {
+    display: grid;
+    gap: 0.25rem;
+    padding-right: 0.75rem;
+    border-right: 1px solid var(--ui-border);
+  }
+  .scout-stats > div:last-child {
+    border: 0;
+  }
+  .scout-stats strong {
+    font-size: 1.75rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .scout-stats span {
+    font-size: 0.75rem;
+    color: var(--ui-text-muted);
+  }
+  .scout-pipeline {
+    list-style: none;
+    padding: 0;
+    margin-block: 0.75rem 1.25rem;
+  }
+  .scout-pipeline li {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    padding-block: 1rem;
+    border-bottom: 1px solid var(--ui-border);
+  }
+  .scout-pipeline strong {
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .scout-pipeline__number {
+    color: var(--ui-accent);
+    font-size: 0.8125rem;
+  }
+  .scout-pipeline__value {
+    font-size: 0.8125rem;
+    color: var(--ui-text-muted);
+    text-align: end;
+    max-width: 9rem;
+    overflow-wrap: anywhere;
+  }
+  .scout-export {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .scout-export > :first-child {
+    width: 8rem;
+  }
+  .scout-records {
+    min-width: 0;
+  }
+  .scout-value {
+    border: 0;
+    padding: 0.25rem 0;
+    background: transparent;
+    color: var(--ui-accent);
+    font: inherit;
+    text-align: start;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+  }
+  .scout-value:hover {
+    text-decoration: underline;
+  }
+  .scout-evidence {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-left: 3px solid var(--ui-accent);
+    background: var(--ui-surface-2);
+  }
+  .scout-execution-details {
+    margin-top: 1.5rem;
+    color: var(--ui-text-muted);
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+  }
+  .scout-journal {
+    padding-left: 1.25rem;
+  }
+
+  @media (max-width: 1199.98px) {
+    .scout-workspace {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .scout-sidebar {
+      display: none;
+    }
+  }
+  @media (max-width: 767.98px) {
+    .scout-field-rule__main {
+      grid-template-columns: minmax(0, 1fr) 6.5rem auto;
+    }
+    .scout-field-rule__main > :nth-child(3) {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+    .scout-toolbar {
+      width: 100%;
+    }
+    .scout-panel-content {
+      padding: 1rem;
+    }
+    .scout-plan--expanded > div {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.25rem;
+    }
+    .scout-stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .scout-stats > div:nth-child(2) {
+      border: 0;
+    }
+    .scout-pipeline li {
+      grid-template-columns: 1.5rem minmax(0, 1fr);
+    }
+    .scout-pipeline__value {
+      grid-column: 2;
+      max-width: none;
+      text-align: start;
+    }
+    .form-card__footer {
+      flex-wrap: wrap;
+    }
+  }
+  @media (max-width: 575.98px) {
+    padding-inline: 0.75rem;
+    .scout-step-rail .step-rail__list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      row-gap: 1rem;
+      overflow: visible;
+    }
+    .scout-step-rail .step-rail__item {
+      min-width: 0;
+    }
+    .scout-step-rail .step-rail__item:nth-child(3)::after {
+      display: none;
+    }
+    .scout-step-rail .step-rail__label {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .scout-mode {
+      grid-template-columns: 2rem minmax(0, 1fr) 1rem;
+      padding: 0.875rem;
+      gap: 0.65rem;
+    }
+    .scout-mode__icon {
+      width: 2rem;
+      height: 2rem;
+    }
+    .scout-toolbar > :first-child {
+      flex: 1 1 8rem;
+    }
+    .scout-toolbar > button {
+      flex: 1 1 auto;
+    }
+    .scout-record-rule {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .scout-actions > .btn-primary {
+      width: 100%;
+    }
+    .scout-source-heading {
+      align-items: start;
+    }
+  }
+  @media (pointer: coarse) {
+    .scout-value,
+    .btn,
+    summary {
+      min-height: 2.75rem;
+    }
+  }
+}
