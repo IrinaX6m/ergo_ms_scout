@@ -162,6 +162,7 @@ class Record(PublicIdMixin, models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        indexes = [models.Index(fields=['run', 'created_at', 'id'], name='scout_record_run_order')]
         constraints = [
             models.UniqueConstraint(
                 fields=['snapshot', 'schema_revision', 'rules_revision', 'identity_key'],

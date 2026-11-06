@@ -130,6 +130,8 @@ ergoms scout:approve-run --run <uuid> --user-public-id <uuid>
 ergoms api test modules.scout.api
 ```
 
+GitHub Actions проверяет миграции и запускает тесты Scout с PostgreSQL на каждом pull request и при обновлении `dev`. Результат виден во вкладке **Checks** под именем **Scout tests / Django + PostgreSQL**.
+
 Повторяющееся поле в команде отмечается звёздочкой: `title*=css:.card .title`.
 
 Переменная `SCOUT_TASK_RUNNER=inline` в `modules/scout/.env.example` выполняет задачи в том же процессе. Для обычной работы оставьте `celery`.

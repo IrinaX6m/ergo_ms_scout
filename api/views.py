@@ -1,6 +1,10 @@
 """Служебное API редактора сбора."""
 
+from uuid import UUID
+
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.utils.translation import gettext as _
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -109,8 +113,12 @@ class RunDetailView(BaseAPIView):
     permission_classes = [IsAuthenticated, CanViewScout]
 
     def get(self, request, public_id):
+        runs = runs_for(request.user).select_related('job_revision__job')
+        if request.query_params.get('summary') == '1':
+            run = get_object_or_404(runs, public_id=public_id)
+            return Response(run_payload(run, summary=True))
         run = get_object_or_404(
-            runs_for(request.user).prefetch_related('tasks', 'snapshots'),
+            runs.prefetch_related('tasks', 'snapshots'),
             public_id=public_id,
         )
         return Response(_run_body(run))
@@ -186,8 +194,33 @@ class RunRecordsView(BaseAPIView):
 
     def get(self, request, public_id):
         run = get_object_or_404(runs_for(request.user), public_id=public_id)
-        records = run.records.prefetch_related('evidence').order_by('created_at')
-        return Response({'records': [record_payload(item) for item in records]})
+        records = run.records.order_by('created_at', 'pk')
+        if 'limit' not in request.query_params and 'cursor' not in request.query_params:
+            return Response({'records': [record_payload(item) for item in records.prefetch_related('evidence')]})
+
+        try:
+            limit = int(request.query_params.get('limit', '50'))
+        except ValueError:
+            limit = 0
+        if not 1 <= limit <= 200:
+            exc = ScoutError('invalid_limit', _('Размер порции должен быть целым числом от 1 до 200.'))
+            return Response(error_payload(exc), status=error_status(exc))
+
+        if 'cursor' in request.query_params:
+            try:
+                after = records.only('created_at').get(public_id=UUID(request.query_params['cursor']))
+            except (ValueError, records.model.DoesNotExist):
+                exc = ScoutError('invalid_cursor', _('Курсор не соответствует записи этого сбора.'))
+                return Response(error_payload(exc), status=error_status(exc))
+            records = records.filter(created_at__gte=after.created_at).filter(
+                Q(created_at__gt=after.created_at) | Q(pk__gt=after.pk),
+            )
+
+        page = list(records.prefetch_related('evidence')[:limit + 1])
+        return Response({
+            'records': [record_payload(item) for item in page[:limit]],
+            'next_cursor': str(page[limit - 1].public_id) if len(page) > limit else None,
+        })
 
 
 class RunExportView(BaseAPIView):

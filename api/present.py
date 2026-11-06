@@ -1,5 +1,7 @@
 """Ответы API без числовых id базы."""
 
+from django.db.models import Count
+
 from .models import CrawlURL
 from .services.journal import journal_lines, stored_messages
 
@@ -28,7 +30,7 @@ def revision_payload(revision) -> dict:
     }
 
 
-def run_payload(run, *, preview=None) -> dict:
+def run_payload(run, *, preview=None, summary=False) -> dict:
     data = {
         'public_id': str(run.public_id),
         'status': run.status,
@@ -42,9 +44,13 @@ def run_payload(run, *, preview=None) -> dict:
         'record_count': run.records.count(),
         'stop_reason': run.stop_reason,
         'frontier': _frontier_counts(run),
-        'journal': journal_lines(run),
-        'events': stored_messages(run),
-        'tasks': [
+    }
+    if summary:
+        return data
+    data.update(
+        journal=journal_lines(run),
+        events=stored_messages(run),
+        tasks=[
             {
                 'public_id': str(task.public_id),
                 'kind': task.kind,
@@ -54,7 +60,7 @@ def run_payload(run, *, preview=None) -> dict:
             }
             for task in run.tasks.all()
         ],
-    }
+    )
     if preview is not None:
         data['preview'] = preview
     return data
@@ -62,9 +68,11 @@ def run_payload(run, *, preview=None) -> dict:
 
 def _frontier_counts(run) -> dict:
     counts = {'queued': 0, 'active': 0, 'done': 0, 'skipped': 0, 'failed': 0}
-    for state in CrawlURL.objects.filter(run=run).values_list('state', flat=True):
+    rows = CrawlURL.objects.filter(run=run).values('state').annotate(total=Count('pk')).order_by()
+    for row in rows:
+        state = row['state']
         if state in counts:
-            counts[state] += 1
+            counts[state] = row['total']
     return counts
 
 

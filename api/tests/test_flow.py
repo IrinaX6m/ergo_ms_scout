@@ -1,5 +1,6 @@
 """Проверка извлечения, подтверждения, повтора задачи и чужого запуска."""
 
+import json
 import os
 import threading
 from datetime import timedelta
@@ -14,6 +15,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from modules.scout.api.models import Record, Task
+from modules.scout.api.present import record_payload
 from modules.scout.api.services.constants import (
     RUN_AWAITING,
     RUN_COMPLETED,
@@ -200,6 +202,12 @@ class FlowTests(TestCase):
         run.refresh_from_db()
         self.assertEqual(run.status, RUN_COMPLETED)
         self.assertEqual(Record.objects.filter(run=run).count(), 2)
+        records = run.records.order_by('created_at', 'pk')
+        retained, removed = records
+        evidence = list(retained.evidence.values())
+        removed_identity = removed.identity_key
+        removed_evidence = list(removed.evidence.values_list('field_path', 'normalized_value'))
+        removed.delete()
 
         extract_task = run.tasks.get(kind='extract')
         extract_task.status = TASK_PENDING
@@ -210,6 +218,9 @@ class FlowTests(TestCase):
         run.save(update_fields=['status', 'finished_at'])
         publish_ready(str(run.public_id))
         self.assertEqual(Record.objects.filter(run=run).count(), 2)
+        self.assertEqual(list(retained.evidence.values()), evidence)
+        recreated = run.records.get(identity_key=removed_identity)
+        self.assertEqual(list(recreated.evidence.values_list('field_path', 'normalized_value')), removed_evidence)
 
     def test_stale_fencing_does_not_write_and_lost_worker_keeps_run(self):
         job = self._job()
@@ -254,20 +265,58 @@ class FlowTests(TestCase):
         run.refresh_from_db()
 
         class Storage:
-            def save(self, path, content):
+            def commit_local(self, local_path, path):
                 self.path = path
-                self.content = content
+                self.local_path = Path(local_path)
+                self.content = self.local_path.read_bytes()
                 return path
 
         storage = Storage()
         with patch('modules.scout.api.services.exporting.get_media_client', return_value=storage), patch(
             'modules.scout.api.services.exporting.get_signed_media_url',
             return_value='/serve/scout/exports/records.csv?signature=1&expires=1',
-        ):
+        ), patch('modules.scout.api.services.exporting.EXPORT_BATCH_SIZE', 1):
             _artifact, url, filename = export_run(run=run, kind='csv')
-        self.assertEqual(filename, 'records.csv')
-        self.assertIn('/serve/', url)
-        self.assertIn('Токарный', storage.content.decode('utf-8'))
+            self.assertEqual(filename, 'records.csv')
+            self.assertIn('/serve/', url)
+            self.assertTrue(storage.content.startswith(b'\xef\xbb\xbf'))
+            self.assertIn('Токарный', storage.content.decode('utf-8'))
+            self.assertFalse(storage.local_path.exists())
+
+            _artifact, _url, filename = export_run(run=run, kind='json')
+            self.assertEqual(filename, 'records.json')
+            self.assertEqual(json.loads(storage.content), [
+                record_payload(record) for record in run.records.order_by('created_at', 'pk')
+            ])
+            self.assertFalse(storage.local_path.exists())
+
+    def test_records_cursor_and_lightweight_status(self):
+        run = explore_job(job=self._job(), user_public_id=self.user.public_id)
+        publish_ready(str(run.public_id))
+        approve_run(run=run, user_public_id=self.user.public_id)
+        run = start_run(run=run)
+        publish_ready(str(run.public_id))
+        run.records.update(created_at=timezone.now())
+
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        path = f'/api/scout/runs/{run.public_id}/'
+        full = client.get(path + 'records/').data
+        first = client.get(path + 'records/', {'limit': 1}).data
+        second = client.get(path + 'records/', {'limit': 1, 'cursor': first['next_cursor']}).data
+        self.assertEqual(set(full), {'records'})
+        self.assertEqual(first['records'] + second['records'], full['records'])
+        self.assertEqual(first['next_cursor'], first['records'][0]['public_id'])
+        self.assertIsNone(second['next_cursor'])
+        self.assertEqual(client.get(path + 'records/', {'limit': 201}).data['code'], 'invalid_limit')
+        self.assertEqual(client.get(path + 'records/', {'cursor': str(uuid4())}).data['code'], 'invalid_cursor')
+
+        with patch('modules.scout.api.present.journal_lines', side_effect=AssertionError('summary read journal')):
+            summary = client.get(path, {'summary': 1}).data
+        self.assertEqual(summary['status'], RUN_COMPLETED)
+        self.assertEqual(summary['record_count'], 2)
+        self.assertEqual(summary['snapshot_count'], 1)
+        self.assertTrue({'journal', 'events', 'preview', 'tasks'}.isdisjoint(summary))
 
     def test_start_without_approval_is_rejected_over_http(self):
         client = APIClient()

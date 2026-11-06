@@ -39,6 +39,7 @@ from .runs import advance_run, _finish_if_idle
 from .snapshot_store import read_snapshot_bytes, store_snapshot_bytes
 
 logger = logging.getLogger('celery.module.scout.tasks')
+EXTRACT_WRITE_BATCH_SIZE = 500
 
 
 def inline_runner() -> bool:
@@ -293,30 +294,7 @@ def _extract(task: Task, token: int) -> None:
     rules = revision.rules_revision
 
     def write():
-        for row in rows:
-            record, created = Record.objects.get_or_create(
-                snapshot=snapshot,
-                schema_revision=schema,
-                rules_revision=rules,
-                identity_key=row['identity_key'],
-                defaults={'run': task.run, 'values': row['values']},
-            )
-            if not created:
-                continue
-            Evidence.objects.bulk_create([
-                Evidence(
-                    record=record,
-                    snapshot=snapshot,
-                    source_url=snapshot.source_url,
-                    field_path=item['field_path'],
-                    locator=item['locator'],
-                    raw_value=item['raw_value'],
-                    normalized_value=item['normalized_value'],
-                    extractor_id=item['extractor_id'],
-                    extractor_version=item['extractor_version'],
-                )
-                for item in row['evidence']
-            ])
+        _store_extracted_rows(snapshot, schema, rules, rows)
         for line in describe_extract(
             body,
             revision.fields,
@@ -329,6 +307,47 @@ def _extract(task: Task, token: int) -> None:
             append_event(task.run_id, line)
 
     _finish(task, token, write)
+
+
+def _store_extracted_rows(snapshot, schema, rules, rows) -> None:
+    records = Record.objects.filter(snapshot=snapshot, schema_revision=schema, rules_revision=rules)
+    for offset in range(0, len(rows), EXTRACT_WRITE_BATCH_SIZE):
+        by_key = {}
+        for row in rows[offset:offset + EXTRACT_WRITE_BATCH_SIZE]:
+            by_key.setdefault(row['identity_key'], row)
+        existing_keys = records.filter(identity_key__in=by_key).values_list('identity_key', flat=True)
+        for key in existing_keys:
+            del by_key[key]
+        if not by_key:
+            continue
+
+        Record.objects.bulk_create([
+            Record(
+                run_id=snapshot.run_id,
+                snapshot=snapshot,
+                schema_revision=schema,
+                rules_revision=rules,
+                identity_key=key,
+                values=row['values'],
+            )
+            for key, row in by_key.items()
+        ])
+        record_ids = dict(records.filter(identity_key__in=by_key).values_list('identity_key', 'pk'))
+        Evidence.objects.bulk_create([
+            Evidence(
+                record_id=record_ids[key],
+                snapshot=snapshot,
+                source_url=snapshot.source_url,
+                field_path=item['field_path'],
+                locator=item['locator'],
+                raw_value=item['raw_value'],
+                normalized_value=item['normalized_value'],
+                extractor_id=item['extractor_id'],
+                extractor_version=item['extractor_version'],
+            )
+            for key, row in by_key.items()
+            for item in row['evidence']
+        ], batch_size=EXTRACT_WRITE_BATCH_SIZE)
 
 
 def _crawl(task: Task, token: int) -> None:
