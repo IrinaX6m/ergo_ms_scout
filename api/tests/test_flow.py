@@ -6,6 +6,7 @@ from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
+from uuid import uuid4
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -38,6 +39,7 @@ from modules.scout.api.services.tasks_exec import (
     recover_expired_leases,
     run_one,
 )
+from modules.scout.api.tasks import DISPATCH_REQUEST_HEADER, _request_dispatch, dispatch_scout_pending
 
 FIXTURE = Path(__file__).resolve().parent.joinpath('fixtures', 'cards.html').read_bytes()
 RECORD = {'kind': 'css', 'selector': '.card'}
@@ -75,6 +77,64 @@ class ExtractTests(TestCase):
             [row['values']['price']['normalized'] for row in rows],
             ['10', '20'],
         )
+
+
+class DispatchRequestTests(TestCase):
+    def setUp(self):
+        owner = uuid4()
+        job = create_job(
+            user_public_id=owner,
+            title='Каталог',
+            seed_urls=['https://example.com/'],
+            fields=FIELDS,
+            record=RECORD,
+        )
+        self.run = explore_job(job=job, user_public_id=owner)
+        self.run_id = str(self.run.public_id)
+
+    def test_one_request_waits_and_the_next_can_be_queued_during_dispatch(self):
+        with patch.object(dispatch_scout_pending, 'apply_async') as enqueue:
+            _request_dispatch(self.run_id)
+            _request_dispatch(self.run_id)
+            enqueue.assert_called_once()
+            first_message = enqueue.call_args.kwargs
+
+            with patch('modules.scout.api.tasks.publish_ready', side_effect=_request_dispatch) as sweep:
+                dispatch_scout_pending.apply(**first_message, throw=True)
+                sweep.assert_called_once_with(self.run_id)
+                self.assertEqual(enqueue.call_count, 2)
+                self.assertNotEqual(enqueue.call_args.kwargs['headers'], first_message['headers'])
+
+                dispatch_scout_pending.apply(**first_message, throw=True)
+                sweep.assert_called_once_with(self.run_id)
+                self.run.refresh_from_db()
+                self.assertEqual(
+                    self.run.dispatch_requested_until.isoformat(),
+                    enqueue.call_args.kwargs['headers'][DISPATCH_REQUEST_HEADER],
+                )
+
+    def test_expired_request_can_be_replaced_and_beat_can_still_sweep(self):
+        expired = timezone.now() - timedelta(seconds=1)
+        self.run.dispatch_requested_until = expired
+        self.run.save(update_fields=['dispatch_requested_until'])
+        with patch.object(dispatch_scout_pending, 'apply_async') as enqueue:
+            _request_dispatch(self.run_id)
+        enqueue.assert_called_once()
+
+        with patch('modules.scout.api.tasks.publish_ready') as sweep:
+            dispatch_scout_pending.apply(
+                args=[self.run_id], headers={DISPATCH_REQUEST_HEADER: expired.isoformat()}, throw=True,
+            )
+            sweep.assert_not_called()
+            dispatch_scout_pending.apply(throw=True)
+            sweep.assert_called_once_with(None)
+
+    def test_broker_failure_releases_the_request(self):
+        with patch.object(dispatch_scout_pending, 'apply_async', side_effect=OSError('broker')):
+            with self.assertLogs('celery.module.scout.tasks', level='ERROR'):
+                _request_dispatch(self.run_id)
+        self.run.refresh_from_db()
+        self.assertIsNone(self.run.dispatch_requested_until)
 
 
 class FlowTests(TestCase):
