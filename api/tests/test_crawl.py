@@ -361,8 +361,8 @@ class CrawlTests(TestCase):
             publish_ready(str(run.public_id))
             second_batch = [call.args[0] for call in send.call_args_list]
 
-        expected_first = [task for pair in zip(fetches[:4], extracts[:4]) for task in pair] + fetches[4:16]
-        expected_second = [fetches[16], extracts[4], *fetches[17:], *crawls]
+        expected_first = [fetches[0], extracts[0], *fetches[1:19]]
+        expected_second = [fetches[19], extracts[1], *fetches[20:], *extracts[2:], *crawls]
         self.assertEqual(first_batch, [str(task.public_id) for task in expected_first])
         self.assertEqual(second_batch, [str(task.public_id) for task in expected_second])
 

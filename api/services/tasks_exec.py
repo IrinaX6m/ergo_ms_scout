@@ -40,7 +40,7 @@ from .runs import advance_run, _finish_if_idle
 from .snapshot_store import read_snapshot_bytes, store_snapshot_bytes
 
 logger = logging.getLogger('celery.module.scout.tasks')
-DISPATCH_INTERLEAVE_ROUNDS = 4
+DISPATCH_INTERLEAVE_ROUNDS = 1
 EXTRACT_WRITE_BATCH_SIZE = 500
 
 
