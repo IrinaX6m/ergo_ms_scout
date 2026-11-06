@@ -245,6 +245,24 @@ class CrawlTests(TestCase):
         self.assertIn(f'{self.origin}/cat?page=2', urls)
         self.assertIn(f'{self.origin}/item?id=9', urls)
         self.assertIn(f'{self.origin}/item/1', urls)
+        self.assertEqual(run.snapshots.filter(has_crawl_links=False).count(), 2)
+        self.assertEqual(run.tasks.filter(kind=TASK_CRAWL).count(), 2)
+
+    def test_link_free_seed_reuses_preview_without_crawl_task(self):
+        run = self._crawl('/quiet')
+        self.assertEqual(run.status, RUN_COMPLETED)
+        self.assertIs(run.snapshots.get().has_crawl_links, False)
+        self.assertEqual(run.tasks.filter(kind=TASK_FETCH).count(), 1)
+        self.assertFalse(run.tasks.filter(kind=TASK_CRAWL).exists())
+        self.assertEqual(run.records.count(), 1)
+
+    def test_unknown_link_status_keeps_crawl_for_reused_snapshot(self):
+        with patch('modules.scout.api.services.page_links.has_crawl_links', return_value=None):
+            run = self._crawl('/quiet')
+        self.assertEqual(run.status, RUN_COMPLETED)
+        self.assertIsNone(run.snapshots.get().has_crawl_links)
+        self.assertEqual(run.tasks.filter(kind=TASK_CRAWL).count(), 1)
+        self.assertEqual(run.records.count(), 1)
 
     def test_redirect_is_not_fetched_twice(self):
         run = self._crawl('/go', max_pages=5)

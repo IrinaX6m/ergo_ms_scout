@@ -48,7 +48,8 @@ def note_fetch(run: Run, snapshot: PageSnapshot) -> None:
         return
     _remember_done(run, snapshot.source_url, snapshot, depth=0)
     _alias_redirect(run, snapshot)
-    _schedule_crawl(run, snapshot)
+    if snapshot.has_crawl_links is not False:
+        _schedule_crawl(run, snapshot)
     _schedule_extract(run, snapshot, crawl)
 
 
@@ -244,7 +245,7 @@ def _attach_or_fetch(run: Run, row: CrawlURL) -> None:
 
 def _spread(run: Run, row: CrawlURL) -> None:
     snapshot = row.snapshot
-    if snapshot is None or not snapshot.content_path:
+    if snapshot is None or snapshot.has_crawl_links is False or not snapshot.content_path:
         return
     from .snapshot_store import read_snapshot_bytes
     try:

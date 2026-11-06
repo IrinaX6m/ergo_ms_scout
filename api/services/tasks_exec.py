@@ -270,6 +270,12 @@ def _fetch(task: Task, token: int) -> None:
         url_allowed=url_allowed,
     )
     digest, relative = store_snapshot_bytes(result['body'])
+    charset = result.get('charset') or ''
+    links_present = None
+    if crawl.get('mode') == 'site':
+        from .page_links import has_crawl_links
+
+        links_present = has_crawl_links(result['body'], result['content_type'], charset, result['final_url'])
 
     def write():
         snapshot, _created = PageSnapshot.objects.get_or_create(
@@ -282,7 +288,8 @@ def _fetch(task: Task, token: int) -> None:
                 'content_path': relative,
                 'byte_size': len(result['body']),
                 'content_type': result['content_type'],
-                'charset': result.get('charset') or '',
+                'charset': charset,
+                'has_crawl_links': links_present,
             },
         )
         append_event(

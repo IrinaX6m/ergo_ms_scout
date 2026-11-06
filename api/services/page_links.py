@@ -3,8 +3,17 @@
 from urllib.parse import urljoin
 
 from lxml import html as lxml_html
+from lxml.etree import LxmlError
 
 from .html_extract import decode_html
+
+
+def has_crawl_links(body: bytes, content_type: str, charset: str, page_url: str) -> bool | None:
+    try:
+        hrefs, _base = iter_hrefs(body, content_type, charset, page_url)
+    except (LxmlError, ValueError):
+        return None
+    return bool(hrefs)
 
 
 def iter_hrefs(body: bytes, content_type: str, charset: str, page_url: str) -> tuple[list[str], str]:
