@@ -58,6 +58,45 @@ def selector_match_count(body: bytes, rule: dict, content_type: str = '', charse
     return len(_texts(root, rule, relative=False))
 
 
+def check_plan_selectors(body: bytes, rules: list[dict], record, *, charset: str = '') -> tuple[str, str] | None:
+    """Первая ошибка или правило без совпадений на всём примере."""
+    root = _parse(body, '', charset)
+    try:
+        containers = _containers(root, record)
+    except ScoutError:
+        return 'selector', '/record/selector'
+    if containers == []:
+        return 'selector_no_match', '/record/selector'
+
+    unmatched = {}
+    for index, rule in enumerate(rules):
+        if rule['scope'] == 'record':
+            unmatched[index] = rule
+            continue
+        path = f'/fields/{index}/selector'
+        try:
+            matches = _nodes(root, rule, relative=False)
+        except ScoutError:
+            return 'selector', path
+        if not matches:
+            return 'selector_no_match', path
+
+    for node in containers or []:
+        if not unmatched:
+            break
+        target = _isolate(node)
+        for index, rule in list(unmatched.items()):
+            try:
+                matches = _nodes(target, rule, relative=True)
+            except ScoutError:
+                return 'selector', f'/fields/{index}/selector'
+            if matches:
+                del unmatched[index]
+    if unmatched:
+        return 'selector_no_match', f'/fields/{next(iter(unmatched))}/selector'
+    return None
+
+
 def decode_html(body: bytes, content_type: str = '', charset: str = '') -> str:
     bom_text = _decode_bom(body)
     if bom_text is not None:

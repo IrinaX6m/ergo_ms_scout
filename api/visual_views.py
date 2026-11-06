@@ -1,4 +1,6 @@
-"""API редактора. Все операции работают с временными снимками текущего пользователя."""
+"""Настройка по временным снимкам текущего пользователя."""
+
+from uuid import UUID
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -14,6 +16,7 @@ from .models import VisualSnapshot
 from .permissions import CanConfigureScout, CanRunScout
 from .services.access import require_user_public_id
 from .services.errors import ScoutError
+from .services.plan_suggestions import SuggestionSelectorError, suggest_plan
 from .services.visual_rules import VisualDocument
 from .services.visual_snapshots import SNAPSHOT_TTL, create_snapshot, enqueue_snapshot, snapshot_status
 
@@ -69,6 +72,41 @@ class VisualSnapshotCheckView(BaseAPIView):
         except ScoutError as exc:
             return Response(error_payload(exc), status=error_status(exc))
         return Response(result)
+
+
+class PlanSuggestionView(BaseAPIView):
+    permission_classes = [IsAuthenticated, CanConfigureScout]
+
+    def post(self, request):
+        try:
+            data = _request_object(request.data)
+            public_id = data.get('snapshot_public_id')
+            goal = data.get('goal')
+            goal = goal.strip() if isinstance(goal, str) else ''
+            if not isinstance(public_id, str) or not 1 <= len(goal) <= 2000:
+                raise ScoutError('invalid', 'Укажите UUID снимка и цель длиной от 1 до 2000 символов')
+            try:
+                snapshot_id = UUID(public_id)
+            except ValueError:
+                raise ScoutError('invalid', 'Укажите корректный UUID снимка') from None
+            snapshot = _get_snapshot(request.user, snapshot_id)
+            status, _ = snapshot_status(snapshot)
+            if status != 'ready':
+                raise ScoutError('snapshot_not_ready', 'Снимок недоступен для проверки')
+            draft = suggest_plan(snapshot, goal)
+        except SuggestionSelectorError as exc:
+            return Response({**error_payload(exc), 'path': exc.path}, status=422)
+        except ScoutError as exc:
+            status = {
+                'snapshot_not_ready': 409,
+                'invalid_model_response': 502,
+                'model_unavailable': 503,
+            }.get(exc.code)
+            return Response(error_payload(exc), status=status or error_status(exc))
+        return Response(
+            {'snapshot_public_id': str(snapshot.public_id), 'draft': draft},
+            headers={'Cache-Control': 'no-store'},
+        )
 
 
 def _request_object(data):

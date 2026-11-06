@@ -12,11 +12,11 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from modules.scout.api.models import Record, Task
+from modules.scout.api.models import Job, Record, Run, Task, VisualSnapshot
 from modules.scout.api.present import record_payload
 from modules.scout.api.services.constants import (
     RUN_AWAITING,
@@ -179,6 +179,146 @@ class FlowTests(TestCase):
             fields=FIELDS,
             record=RECORD,
         )
+
+    def _plan_suggestion_input(self, **snapshot_overrides):
+        snapshot = VisualSnapshot.objects.create(**{
+            'user_public_id': self.user.public_id,
+            'source_url': self.url.replace('/cards', '/data001/items/1'),
+            'status': 'ready', 'charset': 'utf-8', 'body': DATA001_FIXTURE,
+            **snapshot_overrides,
+        })
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        return client, {'snapshot_public_id': str(snapshot.public_id), 'goal': '  Собери название, цену и остаток  '}
+
+    @override_settings(SCOUT_AI_ENABLED=True, SCOUT_AI_TIMEOUT_SECONDS=7)
+    def test_ai_draft_uses_ordinary_preview_and_collection(self):
+        body = DATA001_FIXTURE + (
+            b'<script>private-script</script><form>private-form</form>'
+            b'<a href="private-link"><!-- private-comment -->visible-link</a>'
+        )
+        client, payload = self._plan_suggestion_input(body=body)
+        rules = {'record': {'kind': 'css', 'selector': 'article'}, 'fields': [
+            {'name': 'name', 'kind': 'css', 'selector': 'h2', 'scope': 'record', 'many': False},
+            *DATA001_FIELDS[:2],
+        ]}
+        with patch('modules.scout.api.services.plan_suggestions.bridge') as model_bridge:
+            model = model_bridge.call
+            model.return_value = f'```json\n{json.dumps(rules)}\n```'
+            proposed = client.post('/api/scout/plan-suggestions/', payload, format='json')
+            self.assertEqual(proposed.status_code, 200, proposed.data)
+            self.assertFalse(Job.objects.exists())
+            self.assertFalse(Run.objects.exists())
+            prompt = json.loads(model.call_args.kwargs['messages'][1]['content'])
+            self.assertEqual(model.call_args.args, ('ollama_framework.chat',))
+            self.assertEqual(model.call_args.kwargs['config']['request_timeout'], 7)
+            self.assertEqual(prompt['goal'], payload['goal'].strip())
+            self.assertIn('class="price"', prompt['html'])
+            self.assertIn('visible-link', prompt['html'])
+            self.assertNotIn('private-', prompt['html'])
+            self.assertEqual(proposed.data['snapshot_public_id'], payload['snapshot_public_id'])
+
+            created = client.post('/api/scout/jobs/', proposed.data['draft'], format='json')
+            self.assertEqual(created.status_code, 201, created.data)
+            explored = client.post(f"/api/scout/jobs/{created.data['public_id']}/explore/", {}, format='json')
+            self.assertEqual(explored.status_code, 202, explored.data)
+            run_id = explored.data['public_id']
+            publish_ready(run_id)
+            path = f'/api/scout/runs/{run_id}/'
+            preview = client.get(path, {'value_format': 'typed_v1'}).data['preview']
+            self.assertEqual([row['values']['name']['normalized'] for row in preview], ['1-1', '1-2', '1-3'])
+            self.assertEqual(preview[0]['values']['price']['typed']['value'], {'amount': '1234.50', 'currency': 'RUB'})
+            self.assertEqual(preview[0]['values']['quantity']['typed']['value'], 0)
+            self.assertEqual(preview[1]['values']['quantity']['typed']['status'], 'missing')
+            self.assertEqual(client.post(path + 'approve/', {}, format='json').status_code, 200)
+            self.assertEqual(client.post(path + 'start/', {}, format='json').status_code, 202)
+            publish_ready(run_id)
+            self.assertEqual(client.get(path, {'summary': 1}).data['status'], RUN_COMPLETED)
+            model.assert_called_once()
+
+    @override_settings(SCOUT_AI_ENABLED=True)
+    def test_ai_suggestion_errors_leave_manual_setup_available(self):
+        client, payload = self._plan_suggestion_input()
+        rules = {'record': {'kind': 'css', 'selector': 'article'}, 'fields': DATA001_FIELDS[:1]}
+        with patch('modules.scout.api.services.plan_suggestions.bridge') as model_bridge:
+            model = model_bridge.call
+            for reply, status, code, path in (
+                (None, 503, 'model_unavailable', None),
+                ('private-provider-response', 502, 'invalid_model_response', None),
+                (json.dumps({**rules, 'fields': [{**DATA001_FIELDS[0], 'selector': '.price['}]}),
+                 422, 'selector', '/fields/0/selector'),
+                (json.dumps({**rules, 'fields': [{**DATA001_FIELDS[0], 'selector': '.price-missing'}]}),
+                 422, 'selector_no_match', '/fields/0/selector'),
+            ):
+                with self.subTest(code=code):
+                    model.return_value = reply
+                    response = client.post('/api/scout/plan-suggestions/', payload, format='json')
+                    self.assertEqual(response.status_code, status, response.data)
+                    self.assertEqual(response.data['code'], code)
+                    self.assertEqual(response.data.get('path'), path)
+                    self.assertNotIn('draft', response.data)
+                    self.assertNotIn(b'private-provider-response', response.content)
+            self.assertFalse(Job.objects.exists())
+            self.assertFalse(Run.objects.exists())
+            created = client.post('/api/scout/jobs/', {'seed_urls': [self.url], 'fields': FIELDS, 'record': RECORD}, format='json')
+            self.assertEqual(created.status_code, 201, created.data)
+            self.assertEqual(model.call_count, 4)
+
+    @override_settings(SCOUT_AI_ENABLED=True)
+    def test_ai_rejects_unusable_snapshots_and_disabled_mode_before_calling_model(self):
+        client, payload = self._plan_suggestion_input(user_public_id=uuid4())
+        _, pending = self._plan_suggestion_input(status='queued')
+        _, expired = self._plan_suggestion_input()
+        VisualSnapshot.objects.filter(public_id=expired['snapshot_public_id']).update(
+            created_at=timezone.now() - timedelta(hours=2),
+        )
+        with patch('modules.scout.api.services.plan_suggestions.bridge') as model_bridge:
+            for data, status in ((payload, 404), (pending, 409), (expired, 404), ({**payload, 'goal': ' '}, 400)):
+                response = client.post('/api/scout/plan-suggestions/', data, format='json')
+                self.assertEqual(response.status_code, status, response.data)
+            _, ready = self._plan_suggestion_input()
+            with override_settings(SCOUT_AI_ENABLED=False):
+                response = client.post('/api/scout/plan-suggestions/', ready, format='json')
+            self.assertEqual(response.status_code, 503, response.data)
+            self.assertEqual(response.data['code'], 'model_unavailable')
+            model_bridge.call.assert_not_called()
+
+    @override_settings(SCOUT_AI_ENABLED=True)
+    def test_ai_timeout_keeps_provider_concurrency_bounded(self):
+        client, payload = self._plan_suggestion_input()
+        release = threading.Event()
+        started = threading.Event()
+        completed = threading.Event()
+        calls = 0
+        lock = threading.Lock()
+
+        def slow_provider(*args, **kwargs):
+            nonlocal calls
+            with lock:
+                calls += 1
+                if calls == 2:
+                    started.set()
+            release.wait(timeout=5)
+            with lock:
+                calls -= 1
+                if calls == 0:
+                    completed.set()
+
+        module = 'modules.scout.api.services.plan_suggestions'
+        with patch(f'{module}._TIMEOUT_SECONDS', 0.05), patch(f'{module}.bridge') as model_bridge:
+            model_bridge.call.side_effect = slow_provider
+            try:
+                for _ in range(2):
+                    response = client.post('/api/scout/plan-suggestions/', payload, format='json')
+                    self.assertEqual(response.status_code, 503, response.data)
+                    self.assertEqual(response.data['code'], 'model_unavailable')
+                self.assertTrue(started.wait(timeout=1))
+                response = client.post('/api/scout/plan-suggestions/', payload, format='json')
+                self.assertEqual(response.status_code, 503, response.data)
+                self.assertEqual(model_bridge.call.call_count, 2)
+            finally:
+                release.set()
+                self.assertTrue(completed.wait(timeout=2))
 
     def test_preview_rejects_a_private_ip_without_an_operator_exception(self):
         job = self._job('http://127.0.0.1/')
