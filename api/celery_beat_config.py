@@ -13,4 +13,9 @@ class ScoutBeatConfig(CeleryBeatModuleConfig):
                 'schedule': timedelta(seconds=30),
                 'options': {'queue': 'scout'},
             },
+            'scout-clean-visual-snapshots': {
+                'task': 'modules.scout.api.tasks.clean_visual_snapshots',
+                'schedule': timedelta(minutes=15),
+                'options': {'queue': 'scout'},
+            },
         }

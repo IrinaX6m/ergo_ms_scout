@@ -131,6 +131,18 @@ class PageSnapshot(PublicIdMixin, models.Model):
         ]
 
 
+class VisualSnapshot(PublicIdMixin, models.Model):
+    user_public_id = models.UUIDField()
+    source_url = models.CharField(max_length=2000)
+    final_url = models.TextField(blank=True, default='')
+    status = models.CharField(max_length=12, default='queued')
+    body = models.BinaryField(default=bytes)
+    charset = models.CharField(max_length=40, blank=True, default='')
+    error_code = models.CharField(max_length=64, blank=True, default='')
+    error_detail = models.CharField(max_length=400, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+
 class Record(PublicIdMixin, models.Model):
     run = models.ForeignKey(Run, on_delete=models.CASCADE, related_name='records')
     snapshot = models.ForeignKey(PageSnapshot, on_delete=models.CASCADE, related_name='records')

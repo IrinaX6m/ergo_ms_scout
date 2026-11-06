@@ -108,12 +108,13 @@ def _containers(root, record):
 
 def _cell(node, rule: dict, *, relative: bool) -> dict:
     target = _isolate(node) if relative else node
-    texts = _texts(target, rule, relative=relative)
-    if rule.get('many'):
-        chosen = texts or ['']
-    else:
-        chosen = [texts[0]] if texts else ['']
-    raw_parts = [item[:FIELD_TEXT_LIMIT] for item in chosen]
+    return cell_from_matches(_nodes(target, rule, relative=relative), many=rule.get('many'))
+
+
+def cell_from_matches(matches, *, many) -> dict:
+    texts = [_node_text(node) for node in matches]
+    chosen = (texts if many else texts[:1]) or ['']
+    raw_parts = [text[:FIELD_TEXT_LIMIT] for text in chosen]
     raw = '\n'.join(raw_parts)
     normalized = ' | '.join(part for part in (_SPACE.sub(' ', item).strip() for item in raw_parts) if part)
     return {'raw': raw[:FIELD_TEXT_LIMIT], 'normalized': normalized[:FIELD_TEXT_LIMIT], 'parts': raw_parts}

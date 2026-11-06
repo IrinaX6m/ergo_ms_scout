@@ -5,6 +5,7 @@ import logging
 from celery import shared_task
 
 from .services.tasks_exec import inline_runner, publish_ready, run_one
+from .services.visual_snapshots import delete_expired_snapshots, load_snapshot
 
 logger = logging.getLogger('celery.module.scout.tasks')
 
@@ -30,3 +31,13 @@ def dispatch_scout_pending(run_public_id: str = '') -> dict:
     publish_ready(run_public_id or None)
     logger.info('SCOUT сверил очередь запуска %s', run_public_id or '*')
     return {'ok': True}
+
+
+@shared_task(name='modules.scout.api.tasks.load_visual_snapshot', soft_time_limit=45, time_limit=55, ignore_result=True)
+def load_visual_snapshot(public_id: str):
+    load_snapshot(public_id)
+
+
+@shared_task(name='modules.scout.api.tasks.clean_visual_snapshots', ignore_result=True)
+def clean_visual_snapshots():
+    delete_expired_snapshots()

@@ -14,9 +14,13 @@ from .views import (
     RunResumeView,
     RunStartView,
 )
+from .visual_views import VisualSnapshotCheckView, VisualSnapshotCreateView, VisualSnapshotDetailView
 
 urlpatterns = [
     path('health/', HealthView.as_view(), name='scout-health'),
+    path('visual-snapshots/', VisualSnapshotCreateView.as_view(), name='scout-visual-snapshots'),
+    path('visual-snapshots/<uuid:public_id>/', VisualSnapshotDetailView.as_view(), name='scout-visual-snapshot'),
+    path('visual-snapshots/<uuid:public_id>/check/', VisualSnapshotCheckView.as_view(), name='scout-visual-check'),
     path('jobs/', JobListCreateView.as_view(), name='scout-jobs'),
     path('jobs/<uuid:public_id>/', JobDetailView.as_view(), name='scout-job'),
     path('jobs/<uuid:public_id>/explore/', JobExploreView.as_view(), name='scout-job-explore'),

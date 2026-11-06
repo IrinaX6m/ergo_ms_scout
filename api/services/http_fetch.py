@@ -24,20 +24,24 @@ class _LimitedRedirect(urlrequest.HTTPRedirectHandler):
         self.url_allowed = url_allowed
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        self.redirects += 1
-        if self.redirects > 5:
-            raise FetchError('too_many_redirects', _('Слишком много переадресаций'), retryable=False)
-        if not str(newurl).startswith(('http://', 'https://')):
-            raise FetchError('bad_redirect', _('Переадресация ведёт не на http-адрес'), retryable=False)
-        if self.url_allowed is not None and not self.url_allowed(newurl):
-            raise FetchError('redirect_scope', _('Переадресация выходит за пределы плана'), retryable=False)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        try:
+            self.redirects += 1
+            if self.redirects > 5:
+                raise FetchError('too_many_redirects', _('Слишком много переадресаций'), retryable=False)
+            if not str(newurl).startswith(('http://', 'https://')):
+                raise FetchError('bad_redirect', _('Переадресация ведёт не на http-адрес'), retryable=False)
+            if self.url_allowed is not None and not self.url_allowed(newurl):
+                raise FetchError('redirect_scope', _('Переадресация выходит за пределы плана'), retryable=False)
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+        finally:
+            # urllib пытается вычитать всё тело редиректа, хотя соединение уже закрывается.
+            fp.close()
 
 
-def fetch_html(url: str, *, timeout_seconds: int, max_bytes: int, url_allowed=None) -> dict:
+def fetch_html(url: str, *, timeout_seconds: int, max_bytes: int, url_allowed=None, handlers=()) -> dict:
     if url_allowed is not None and not url_allowed(url):
         raise FetchError('url_scope', _('Адрес выходит за пределы плана'), retryable=False)
-    opener = urlrequest.build_opener(_LimitedRedirect(url_allowed))
+    opener = urlrequest.build_opener(_LimitedRedirect(url_allowed), *handlers)
     req = urlrequest.Request(
         url,
         headers={'User-Agent': 'ERGO-SCOUT/0.1', 'Accept': 'text/html,application/xhtml+xml'},
@@ -53,6 +57,7 @@ def fetch_html(url: str, *, timeout_seconds: int, max_bytes: int, url_allowed=No
     except FetchError:
         raise
     except urlerror.HTTPError as exc:
+        exc.close()
         retryable = exc.code in (429, 500, 502, 503, 504)
         raise FetchError(
             f'http_{exc.code}',
