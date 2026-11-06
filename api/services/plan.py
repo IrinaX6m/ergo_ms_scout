@@ -11,6 +11,7 @@ from django.utils.translation import gettext as _
 from .constants import CRAWL_LIMITS, DEFAULT_LIMITS, DROP_QUERY
 from .errors import ScoutError
 from .url_norm import canonical_host, resolve_url, host_allowed
+from .value_types import clean_conversion, typed_csv_columns
 
 _NAME = re.compile(r'^[a-z][a-z0-9_]{0,40}$')
 _KINDS = {'css', 'xpath'}
@@ -78,17 +79,24 @@ def normalize_plan(seed_urls, fields, limits=None, record=None, crawl=None) -> d
         if scope == 'record' and clean_record is None:
             raise ScoutError('invalid', _('Для поля карточки нужен селектор карточки'))
         names.add(name)
-        clean_fields.append({
+        field = {
             'name': name,
             'kind': kind,
             'selector': selector,
             'scope': scope,
             'many': bool(item.get('many')),
-        })
+        }
+        if 'conversion' in item:
+            field['conversion'] = clean_conversion(item['conversion'], many=field['many'])
+        clean_fields.append(field)
     if not clean_fields:
         raise ScoutError('invalid', _('Нужно хотя бы одно поле'))
     if len(clean_fields) > 30:
         raise ScoutError('invalid', _('Слишком много полей'))
+    if any('conversion' in field for field in clean_fields):
+        columns = typed_csv_columns(clean_fields)
+        if len(columns) != len(set(columns)):
+            raise ScoutError('invalid', _('Имена колонок типизированного CSV пересекаются'))
 
     return {
         'seed_urls': urls,

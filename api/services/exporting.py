@@ -12,30 +12,38 @@ from src.core.utils.media_client import get_media_client
 from src.core.utils.media_signing import get_signed_media_url
 
 from ..models import ExportArtifact
-from ..present import record_payload
+from ..present import record_payload, records_with_evidence
 from .constants import RUN_COMPLETED, RUN_COMPLETED_WITH_ERRORS
 from .errors import ScoutError
+from .value_types import TYPED_VALUE_FORMAT, typed_csv_columns
 
 EXPORT_BATCH_SIZE = 200
 
 
-def export_run(*, run, kind: str):
+def export_run(*, run, kind: str, typed: bool = False):
     if run.status not in (RUN_COMPLETED, RUN_COMPLETED_WITH_ERRORS):
         raise ScoutError('invalid_state', _('Выгрузка доступна после завершения сбора'))
     if kind not in ('json', 'csv'):
         raise ScoutError('invalid', _('Формат выгрузки: json или csv'))
     records = run.records.order_by('created_at', 'pk')
     filename = f'records.{kind}'
-    storage_path = f'scout/exports/{run.public_id}/{filename}'
+    storage_dir = f'scout/exports/{run.public_id}'
+    if typed:
+        storage_dir = f'{storage_dir}/{TYPED_VALUE_FORMAT}'
+    storage_path = f'{storage_dir}/{filename}'
     try:
         with TemporaryDirectory(prefix='scout-export-') as temporary:
             local_path = Path(temporary) / filename
             if kind == 'json':
                 with local_path.open('w', encoding='utf-8', newline='') as output:
-                    _write_json(records, output)
+                    _write_json(records, output, typed=typed)
             else:
                 with local_path.open('w', encoding='utf-8-sig', newline='') as output:
-                    _write_csv(records, output)
+                    fields = run.job_revision.fields if typed else []
+                    if any('conversion' in field for field in fields):
+                        _write_typed_csv(records, fields, output)
+                    else:
+                        _write_csv(records, output)
             stored = get_media_client().commit_local(str(local_path), storage_path)
     except Exception as exc:
         raise ScoutError('media', _('Не удалось записать файл выгрузки')) from exc
@@ -44,12 +52,12 @@ def export_run(*, run, kind: str):
     return artifact, url, filename
 
 
-def _write_json(records, output) -> None:
+def _write_json(records, output, *, typed: bool) -> None:
     output.write('[')
     separator = '\n'
-    for record in records.prefetch_related('evidence').iterator(chunk_size=EXPORT_BATCH_SIZE):
+    for record in records_with_evidence(records, typed=typed).iterator(chunk_size=EXPORT_BATCH_SIZE):
         output.write(separator)
-        output.write(indent(json.dumps(record_payload(record), ensure_ascii=False, indent=2), '  '))
+        output.write(indent(json.dumps(record_payload(record, typed=typed), ensure_ascii=False, indent=2), '  '))
         separator = ',\n'
     output.write('\n]' if separator == ',\n' else ']')
 
@@ -65,4 +73,29 @@ def _write_csv(records, output) -> None:
         for name in names:
             cell = (record.values or {}).get(name) or {}
             row[name] = cell.get('normalized', '')
+        writer.writerow(row)
+
+
+def _write_typed_csv(records, fields, output) -> None:
+    writer = csv.DictWriter(output, fieldnames=typed_csv_columns(fields))
+    writer.writeheader()
+    for record in records.iterator(chunk_size=EXPORT_BATCH_SIZE):
+        row = {'public_id': str(record.public_id)}
+        for field in fields:
+            name = field['name']
+            cell = record.values.get(name) or {}
+            conversion = field.get('conversion')
+            if not conversion:
+                row[name] = cell.get('normalized', '')
+                continue
+            typed = cell.get('typed') or {}
+            value = typed.get('value')
+            row[f'{name}__status'] = typed.get('status')
+            row[f'{name}__error'] = (typed.get('error') or {}).get('code')
+            if conversion['type'] == 'money':
+                amount = value or {}
+                row[name] = amount.get('amount')
+                row[f'{name}__currency'] = amount.get('currency')
+            else:
+                row[name] = value
         writer.writerow(row)

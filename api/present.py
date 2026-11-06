@@ -4,6 +4,7 @@ from django.db.models import Count
 
 from .models import CrawlURL
 from .services.journal import journal_lines, stored_messages
+from .services.value_types import legacy_values, missing_typed_fields
 
 
 def job_payload(job) -> dict:
@@ -76,10 +77,17 @@ def _frontier_counts(run) -> dict:
     return counts
 
 
-def record_payload(record) -> dict:
+def records_with_evidence(records, *, typed: bool):
+    if typed:
+        return records.select_related('rules_revision').prefetch_related('evidence__snapshot')
+    return records.prefetch_related('evidence')
+
+
+def record_payload(record, *, typed: bool = False) -> dict:
+    missing = missing_typed_fields(record.values) if typed else set()
     return {
         'public_id': str(record.public_id),
-        'values': record.values,
+        'values': record.values if typed else legacy_values(record.values),
         'evidence': [
             {
                 'field_path': item.field_path,
@@ -89,7 +97,16 @@ def record_payload(record) -> dict:
                 'normalized_value': item.normalized_value,
                 'extractor_id': item.extractor_id,
                 'extractor_version': item.extractor_version,
+                **(_evidence_revision(item, record) if typed else {}),
             }
             for item in record.evidence.all()
+            if item.field_path not in missing
         ],
+    }
+
+
+def _evidence_revision(item, record) -> dict:
+    return {
+        'snapshot_public_id': str(item.snapshot.public_id),
+        'rules_revision_public_id': str(record.rules_revision.public_id),
     }

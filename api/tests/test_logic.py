@@ -5,12 +5,15 @@ from concurrent.futures import ThreadPoolExecutor
 
 from django.test import SimpleTestCase, TestCase
 
+from modules.scout.api.services.constants import FIELD_TEXT_LIMIT
 from modules.scout.api.services.errors import FetchError, ScoutError
 from modules.scout.api.services.html_extract import extract_html
 from modules.scout.api.services.http_fetch import _unwrap_content
 from modules.scout.api.services.journal import describe_extract
+from modules.scout.api.services.plan import normalize_plan, plan_hash
 from modules.scout.api.services.runs import create_job, explore_job
 from modules.scout.api.services.snapshot_store import store_snapshot_bytes
+from modules.scout.api.services.value_types import typed_cell
 
 RECORD = {'kind': 'css', 'selector': '.card'}
 GAP = '''
@@ -87,6 +90,65 @@ class CardExtractTests(SimpleTestCase):
             'name': 'title', 'kind': 'xpath', 'selector': '//h1', 'scope': 'page', 'many': False,
         }])
         self.assertEqual(rows[0]['values']['title']['normalized'], 'Café')
+
+
+class TypedValueTests(SimpleTestCase):
+    def test_plan_checks_conversion_and_csv_column_collisions(self):
+        url = ['https://example.com/catalog']
+        field = {'name': 'price', 'kind': 'css', 'selector': '.price'}
+        money = {'type': 'money', 'currency': 'RUB', 'decimal_separator': ','}
+        legacy = normalize_plan(url, [field])
+        typed = normalize_plan(url, [{**field, 'conversion': money}])
+        self.assertEqual(typed['fields'][0]['conversion'], money)
+        self.assertNotEqual(plan_hash(legacy), plan_hash(typed))
+        for invalid in (
+            [{**field, 'conversion': money, 'many': True}],
+            [{**field, 'conversion': {**money, 'decimal_separator': ';'}}],
+            [{**field, 'conversion': {'type': 'date', 'format': 'MM/DD/YYYY'}}],
+            [{**field, 'conversion': money}, {**field, 'name': 'price__status'}],
+            [{**field, 'conversion': money}, {**field, 'name': 'public_id'}],
+        ):
+            with self.subTest(fields=invalid), self.assertRaises(ScoutError):
+                normalize_plan(url, invalid)
+
+    def test_conversion_preserves_precision_and_validates_range_and_format(self):
+        money = {'type': 'money', 'currency': 'RUB', 'decimal_separator': ','}
+        integer = {'type': 'integer'}
+        calendar_date = {'type': 'date', 'format': 'DD.MM.YYYY'}
+        cases = (
+            ('9\u00a0999\u202f999,5 RUB', money, {'amount': '9999999.50', 'currency': 'RUB'}, None),
+            ('1,01 USD', money, None, 'currency_mismatch'),
+            ('1,01 €', money, None, 'currency_mismatch'),
+            ('1,001 ₽', money, None, 'invalid_decimal'),
+            ('1 23,45 ₽', money, None, 'invalid_decimal'),
+            ('2147483647', integer, 2147483647, None),
+            ('2147483648', integer, None, 'value_out_of_range'),
+            ('-1', integer, None, 'value_out_of_range'),
+            ('29.02.2024', calendar_date, '2024-02-29', None),
+            ('29.02.2026', calendar_date, None, 'invalid_date'),
+            ('6.11.2026', calendar_date, None, 'invalid_date'),
+        )
+        for text, conversion, value, error in cases:
+            with self.subTest(text=text):
+                self.assertEqual(typed_cell(text, conversion), {
+                    'type': conversion['type'], 'status': 'invalid' if error else 'ok',
+                    'value': value, 'error': {'code': error} if error else None,
+                })
+
+    def test_xpath_empty_and_missing_and_truncated_keep_legacy_identity(self):
+        body = ('<p>' + '0' * (FIELD_TEXT_LIMIT + 1) + '</p>').encode()
+        rules = [
+            {'name': 'missing', 'kind': 'xpath', 'selector': '//i'},
+            {'name': 'empty', 'kind': 'xpath', 'selector': 'string(//i)'},
+            {'name': 'large', 'kind': 'xpath', 'selector': '//p'},
+        ]
+        legacy = extract_html(body, rules)[0]
+        typed = extract_html(body, [{**rule, 'conversion': {'type': 'integer'}} for rule in rules])[0]
+        self.assertEqual(typed['identity_key'], legacy['identity_key'])
+        self.assertEqual(typed['evidence'], legacy['evidence'])
+        self.assertEqual(typed['values']['missing']['typed']['status'], 'missing')
+        self.assertEqual(typed['values']['empty']['typed']['status'], 'empty')
+        self.assertEqual(typed['values']['large']['typed']['error'], {'code': 'value_truncated'})
 
 
 class JournalTests(SimpleTestCase):

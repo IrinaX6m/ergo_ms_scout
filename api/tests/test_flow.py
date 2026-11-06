@@ -1,5 +1,7 @@
 """Проверка извлечения, подтверждения, повтора задачи и чужого запуска."""
 
+import csv
+import io
 import json
 import os
 import threading
@@ -44,6 +46,15 @@ from modules.scout.api.services.tasks_exec import (
 from modules.scout.api.tasks import DISPATCH_REQUEST_HEADER, _request_dispatch, dispatch_scout_pending
 
 FIXTURE = Path(__file__).resolve().parent.joinpath('fixtures', 'cards.html').read_bytes()
+DATA001_FIXTURE = Path(__file__).resolve().parent.joinpath('fixtures', 'data001_catalog.html').read_bytes()
+DATA001_FIELDS = [
+    {'name': 'price', 'kind': 'css', 'selector': '.price', 'scope': 'record', 'many': False,
+     'conversion': {'type': 'money', 'currency': 'RUB', 'decimal_separator': ','}},
+    {'name': 'quantity', 'kind': 'css', 'selector': '.quantity', 'scope': 'record', 'many': False,
+     'conversion': {'type': 'integer'}},
+    {'name': 'available_on', 'kind': 'css', 'selector': '.available-on', 'scope': 'record', 'many': False,
+     'conversion': {'type': 'date', 'format': 'DD.MM.YYYY'}},
+]
 RECORD = {'kind': 'css', 'selector': '.card'}
 FIELDS = [
     {'name': 'heading', 'kind': 'xpath', 'selector': '//h1', 'scope': 'page', 'many': False},
@@ -54,7 +65,7 @@ FIELDS = [
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        body = FIXTURE
+        body = DATA001_FIXTURE if self.path == '/data001/items/1' else FIXTURE
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
@@ -317,6 +328,84 @@ class FlowTests(TestCase):
         self.assertEqual(summary['record_count'], 2)
         self.assertEqual(summary['snapshot_count'], 1)
         self.assertTrue({'journal', 'events', 'preview', 'tasks'}.isdisjoint(summary))
+
+    def test_data001_preview_records_and_exports_keep_both_formats(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        url = self.url.replace('/cards', '/data001/items/1')
+        created = client.post('/api/scout/jobs/', {
+            'title': 'DATA-001', 'seed_urls': [url], 'fields': DATA001_FIELDS,
+            'record': {'kind': 'css', 'selector': 'article'},
+        }, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(created.data['revision']['fields'], DATA001_FIELDS)
+        explored = client.post(f"/api/scout/jobs/{created.data['public_id']}/explore/", {}, format='json')
+        run_id = explored.data['public_id']
+        publish_ready(run_id)
+        path = f'/api/scout/runs/{run_id}/'
+        format_param = {'value_format': 'typed_v1'}
+        preview = client.get(path, format_param).data['preview']
+        old_preview = client.get(path).data['preview']
+        self.assertEqual(len(preview), 3)
+        self.assertEqual(preview[0]['values']['price']['typed']['value'], {'amount': '1234.50', 'currency': 'RUB'})
+        self.assertEqual(preview[0]['values']['quantity']['typed']['value'], 0)
+        self.assertEqual(preview[0]['values']['available_on']['typed']['value'], '2026-11-06')
+        self.assertEqual([cell['typed']['status'] for cell in preview[1]['values'].values()], ['empty', 'missing', 'invalid'])
+        self.assertEqual(old_preview[1]['values']['quantity'], {'raw': '', 'normalized': ''})
+        self.assertEqual({item['field_path'] for item in old_preview[1]['evidence']}, {'price', 'quantity', 'available_on'})
+        self.assertEqual({item['field_path'] for item in preview[1]['evidence']}, {'price', 'available_on'})
+        self.assertEqual(preview[1]['evidence'][0]['locator'], 'css:.price#1.0')
+        self.assertEqual(preview[1]['evidence'][0]['raw_value'], ' ')
+        self.assertEqual(preview[1]['evidence'][0]['source_url'], url)
+        self.assertEqual(client.post(path + 'approve/', {}, format='json').status_code, 200)
+        self.assertEqual(client.post(path + 'start/', {}, format='json').status_code, 202)
+        publish_ready(run_id)
+        self.assertEqual(client.get(path, {'summary': 1}).data['status'], RUN_COMPLETED)
+        first = client.get(path + 'records/', {**format_param, 'limit': 2}).data
+        second = client.get(path + 'records/', {**format_param, 'limit': 2, 'cursor': first['next_cursor']}).data
+        self.assertIsNone(second['next_cursor'])
+        typed_records = first['records'] + second['records']
+        self.assertEqual(len(typed_records), 3)
+        for row, example in zip(typed_records, preview):
+            self.assertEqual(row['values'], example['values'])
+            self.assertCountEqual(row['evidence'], example['evidence'])
+        old_records = client.get(path + 'records/').data['records']
+        self.assertEqual(old_records[1]['values'], old_preview[1]['values'])
+        self.assertTrue(all('snapshot_public_id' not in item for item in old_records[1]['evidence']))
+        self.assertEqual(client.get(path + 'records/', {'value_format': 'future'}).data['code'], 'invalid_value_format')
+
+        stored = {}
+
+        def commit_local(local_path, storage_path):
+            stored[storage_path] = Path(local_path).read_bytes()
+            return storage_path
+
+        with patch('modules.scout.api.services.exporting.get_media_client') as storage, patch(
+            'modules.scout.api.services.exporting.get_signed_media_url', side_effect=lambda path, **_: path,
+        ):
+            storage.return_value.commit_local.side_effect = commit_local
+            links = {}
+            for typed in (True, False):
+                for kind in ('json', 'csv'):
+                    payload = {'kind': kind, **(format_param if typed else {})}
+                    response = client.post(path + 'export/', payload, format='json')
+                    self.assertEqual(response.status_code, 200, response.data)
+                    links[typed, kind] = response.data['download_url']
+
+        self.assertEqual(len(stored), 4)
+        self.assertEqual(json.loads(stored[links[True, 'json']]), typed_records)
+        self.assertEqual(json.loads(stored[links[False, 'json']]), old_records)
+        csv_rows = list(csv.DictReader(io.StringIO(stored[links[True, 'csv']].decode('utf-8-sig'))))
+        self.assertEqual([row['public_id'] for row in csv_rows], [row['public_id'] for row in typed_records])
+        self.assertEqual([csv_rows[0][key] for key in ('price', 'price__currency', 'quantity', 'available_on')],
+                         ['1234.50', 'RUB', '0', '2026-11-06'])
+        self.assertEqual([csv_rows[1][key] for key in ('price__status', 'quantity__status', 'available_on__error')],
+                         ['empty', 'missing', 'invalid_date'])
+        self.assertEqual([csv_rows[2][key] for key in ('price__error', 'quantity__error', 'available_on__status')],
+                         ['invalid_decimal', 'invalid_integer', 'empty'])
+        old_csv = list(csv.DictReader(io.StringIO(stored[links[False, 'csv']].decode('utf-8-sig'))))
+        self.assertEqual(set(old_csv[0]), {'public_id', 'price', 'quantity', 'available_on'})
+        self.assertEqual(old_csv[0]['price'], '1 234,50 ₽')
 
     def test_start_without_approval_is_rejected_over_http(self):
         client = APIClient()

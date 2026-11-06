@@ -261,6 +261,9 @@ def _create_revision(job: Job, number: int, plan: dict) -> JobRevision:
         plan_hash=digest,
     )
     schema_fields = [{'name': item['name']} for item in plan['fields']]
+    for schema_field, field in zip(schema_fields, plan['fields']):
+        if 'conversion' in field:
+            schema_field['type'] = field['conversion']['type']
     ExtractionSchemaRevision.objects.create(
         job_revision=revision,
         fields=schema_fields,

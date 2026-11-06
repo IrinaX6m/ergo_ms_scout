@@ -10,6 +10,7 @@ from lxml.etree import XPathError
 from ..contracts.envelope import PROTOCOL_VERSION, build_extract_request
 from .constants import EXTRACTOR_ID, EXTRACTOR_VERSION, FIELD_TEXT_LIMIT
 from .errors import ScoutError
+from .value_types import legacy_values, typed_cell
 
 _SPACE = re.compile(r'\s+')
 _SIMPLE = re.compile(r'^(?P<tag>[\w-]+|\*)?(?P<rest>(?:[.#][\w-]+)*)$')
@@ -35,6 +36,7 @@ def extract_html(body: bytes, rules: list[dict], record=None, content_type: str 
         record_rules = [rule for rule in rules if rule.get('scope') == 'record']
         targets = containers
     shared = [_cell(root, rule, relative=False) for rule in page_rules]
+    has_conversion = any('conversion' in rule for rule in rules)
     rows = []
     for index, node in enumerate(targets):
         values = {}
@@ -43,8 +45,9 @@ def extract_html(body: bytes, rules: list[dict], record=None, content_type: str 
             _put(values, evidence, rule, cell, index)
         for rule in record_rules:
             _put(values, evidence, rule, _cell(node, rule, relative=True), index)
+        identity_values = legacy_values(values) if has_conversion else values
         identity = hashlib.sha256(
-            json.dumps({'index': index, 'values': values}, ensure_ascii=False, sort_keys=True).encode('utf-8')
+            json.dumps({'index': index, 'values': identity_values}, ensure_ascii=False, sort_keys=True).encode('utf-8')
         ).hexdigest()[:64]
         rows.append({'identity_key': identity, 'values': values, 'evidence': evidence})
     return rows
@@ -108,20 +111,25 @@ def _containers(root, record):
 
 def _cell(node, rule: dict, *, relative: bool) -> dict:
     target = _isolate(node) if relative else node
-    return cell_from_matches(_nodes(target, rule, relative=relative), many=rule.get('many'))
+    return cell_from_matches(_nodes(target, rule, relative=relative), many=rule.get('many'), conversion=rule.get('conversion'))
 
 
-def cell_from_matches(matches, *, many) -> dict:
+def cell_from_matches(matches, *, many, conversion=None) -> dict:
     texts = [_node_text(node) for node in matches]
     chosen = (texts if many else texts[:1]) or ['']
     raw_parts = [text[:FIELD_TEXT_LIMIT] for text in chosen]
     raw = '\n'.join(raw_parts)
     normalized = ' | '.join(part for part in (_SPACE.sub(' ', item).strip() for item in raw_parts) if part)
-    return {'raw': raw[:FIELD_TEXT_LIMIT], 'normalized': normalized[:FIELD_TEXT_LIMIT], 'parts': raw_parts}
+    cell = {'raw': raw[:FIELD_TEXT_LIMIT], 'normalized': normalized[:FIELD_TEXT_LIMIT], 'parts': raw_parts}
+    if conversion is not None:
+        cell['typed'] = typed_cell(texts[0] if texts else None, conversion)
+    return cell
 
 
 def _put(values, evidence, rule, cell, index: int) -> None:
     values[rule['name']] = {'raw': cell['raw'], 'normalized': cell['normalized']}
+    if 'typed' in cell:
+        values[rule['name']]['typed'] = cell['typed']
     for part_index, part in enumerate(cell['parts']):
         normalized = _SPACE.sub(' ', part).strip()
         evidence.append({
