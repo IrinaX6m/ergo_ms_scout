@@ -1,9 +1,10 @@
-"""Загрузка HTML с потолком размера. Локальный адрес разрешён для проверочного стенда."""
+"""HTTP-загрузка HTML с ограничением размера ответа."""
 
 import gzip
 import io
 import logging
 import zlib
+from http.client import HTTPException
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
@@ -64,7 +65,7 @@ def fetch_html(url: str, *, timeout_seconds: int, max_bytes: int, url_allowed=No
             _('Страница ответила кодом %(code)s') % {'code': exc.code},
             retryable=retryable,
         ) from exc
-    except (urlerror.URLError, TimeoutError, OSError) as exc:
+    except (HTTPException, urlerror.URLError, OSError) as exc:
         logger.warning('SCOUT не загрузил страницу: %s', type(exc).__name__)
         raise FetchError('network', _('Не удалось загрузить страницу'), retryable=True) from exc
 

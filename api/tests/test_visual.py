@@ -1,6 +1,7 @@
 import io
 import socket
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
@@ -18,13 +19,7 @@ from modules.scout.api.services.visual_snapshots import delete_expired_snapshots
 
 _URL = 'https://example.com/catalog'
 _BASE = '/api/scout/visual-snapshots/'
-_CATALOG = b'''<html><head><meta http-equiv="refresh" content="0;url=https://external.test"></head>
-<body><article class="product" onclick="run()" data-scout-node="spoof">
-  <a href="https://external.test" ping="https://external.test">First</a>
-  <span class="price">10</span><script>alert(1)</script><img src="https://external.test/a" alt="Photo">
-</article><article class="product">Second</article>
-<article class="product">Third <span class="price">20</span><span class="price">30</span></article>
-<iframe src="https://external.test/frame"></iframe></body></html>'''
+_CATALOG = Path(__file__).with_name('fixtures').joinpath('visual_catalog.html').read_bytes()
 
 
 def _address(ip, port):
@@ -58,6 +53,7 @@ class PublicFetchTests(SimpleTestCase):
             b'HTTP/1.1 302 Found\r\nLocation: http://private.test/\r\nContent-Length: 10000000\r\n\r\n'
         )
         with (
+            patch.dict('os.environ', {'SCOUT_TRUSTED_FETCH_ENDPOINTS': '127.0.0.1:80'}),
             patch('socket.getaddrinfo', side_effect=[[_address('93.184.216.34', 80)], [_address('127.0.0.1', 80)]]),
             patch('socket.socket', return_value=public) as create_socket,
             self.assertRaises(FetchError) as error,

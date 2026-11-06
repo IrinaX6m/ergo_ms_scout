@@ -132,6 +132,12 @@ ergoms api test modules.scout.api
 
 Переменная `SCOUT_TASK_RUNNER=inline` в `modules/scout/.env.example` выполняет задачи в том же процессе. Для обычной работы оставьте `celery`.
 
+Для приёмки UX-001 можно поднять [проверочный каталог](api/tests/fixtures/visual_catalog.html) на локальном стенде. В каталоге три карточки с одним, нулём и двумя совпадениями для `.price`. Укажите `SCOUT_TRUSTED_FETCH_ENDPOINTS=127.0.0.1:8765` в `modules/scout/.env` стенда и запустите Django и воркер с этой настройкой. Из корня ERGOMS выполните команду ниже, затем откройте `http://127.0.0.1:8765/visual_catalog.html` через визуальный редактор Scout.
+
+```text
+python -m http.server 8765 --bind 127.0.0.1 --directory modules/scout/api/tests/fixtures
+```
+
 ## Куда смотреть
 
 | Что | Где |

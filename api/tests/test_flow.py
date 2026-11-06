@@ -79,7 +79,6 @@ class ExtractTests(TestCase):
 
 class FlowTests(TestCase):
     def setUp(self):
-        os.environ['SCOUT_TASK_RUNNER'] = 'inline'
         self.user = get_user_model().objects.create_superuser(
             username='scout-admin',
             email='scout-admin@example.com',
@@ -90,19 +89,33 @@ class FlowTests(TestCase):
         self.thread.start()
         host, port = self.server.server_address
         self.url = f'http://{host}:{port}/cards'
+        self.enterContext(patch.dict(os.environ, {
+            'SCOUT_TASK_RUNNER': 'inline',
+            'SCOUT_TRUSTED_FETCH_ENDPOINTS': f'{host}:{port}',
+        }))
 
     def tearDown(self):
         self.server.shutdown()
         self.server.server_close()
 
-    def _job(self):
+    def _job(self, url=None):
         return create_job(
             user_public_id=self.user.public_id,
             title='Каталог',
-            seed_urls=[self.url],
+            seed_urls=[url or self.url],
             fields=FIELDS,
             record=RECORD,
         )
+
+    def test_preview_rejects_a_private_ip_without_an_operator_exception(self):
+        job = self._job('http://127.0.0.1/')
+        run = explore_job(job=job, user_public_id=self.user.public_id)
+        publish_ready(str(run.public_id))
+        task = run.tasks.get(kind='fetch')
+        self.assertEqual(task.error_code, 'url_blocked')
+        self.assertEqual(task.status, 'failed')
+        self.assertEqual(task.attempt_count, 1)
+        self.assertFalse(run.snapshots.exists())
 
     def test_approval_gate_snapshot_and_idempotent_extract(self):
         job = self._job()
@@ -288,7 +301,6 @@ class FlowTests(TestCase):
 
 class DirectRepeatTests(TestCase):
     def test_second_delivery_of_same_token_is_skipped(self):
-        os.environ['SCOUT_TASK_RUNNER'] = 'inline'
         user = get_user_model().objects.create_superuser(
             username='scout-repeat',
             email='scout-repeat@example.com',
@@ -299,6 +311,10 @@ class DirectRepeatTests(TestCase):
         thread.start()
         try:
             host, port = server.server_address
+            self.enterContext(patch.dict(os.environ, {
+                'SCOUT_TASK_RUNNER': 'inline',
+                'SCOUT_TRUSTED_FETCH_ENDPOINTS': f'{host}:{port}',
+            }))
             job = create_job(
                 user_public_id=user.public_id,
                 title='Повтор',

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="refresh" content="0;url=https://external.test">
+    <title>Проверочный каталог Scout</title>
+  </head>
+  <body>
+    <h1>Проверочный каталог Scout</h1>
+    <article class="product" onclick="run()" data-scout-node="spoof">
+      <h2>Одна цена</h2>
+      <span class="price">10</span>
+      <a href="https://external.test" ping="https://external.test">Подробнее</a>
+      <script>alert(1)</script>
+      <img src="https://external.test/a" alt="Фото">
+    </article>
+    <article class="product">
+      <h2>Без цены</h2>
+    </article>
+    <article class="product">
+      <h2>Две цены</h2>
+      <span class="price">20</span>
+      <span class="price">30</span>
+    </article>
+    <iframe src="https://external.test/frame"></iframe>
+  </body>
+</html>

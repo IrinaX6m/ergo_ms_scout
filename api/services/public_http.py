@@ -1,7 +1,8 @@
-"""Публичные источники визуального редактора, включая адрес фактического соединения."""
+"""Сетевые границы загрузчика Scout и проверка адреса фактического соединения."""
 
 import http.client
 import ipaddress
+import os
 import socket
 from time import monotonic
 from urllib.parse import urlsplit
@@ -13,16 +14,30 @@ from .http_fetch import fetch_html
 _IPV6_UNICAST = ipaddress.ip_network('2000::/3')
 
 
+def _trusted_ip(host, port):
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    endpoint = f'[{ip}]:{port}' if ip.version == 6 else f'{ip}:{port}'
+    configured = os.environ.get('SCOUT_TRUSTED_FETCH_ENDPOINTS', '').split(',')
+    if any(endpoint == value.strip() for value in configured):
+        return ip
+    return None
+
+
 def public_url_allowed(url):
     try:
         parts = urlsplit(url)
+        default_port = 443 if parts.scheme == 'https' else 80
+        port = parts.port
         if (
             parts.scheme in ('http', 'https')
             and parts.hostname
             and parts.username is None
             and '%' not in parts.netloc
-            and parts.port in (None, 443 if parts.scheme == 'https' else 80)
             and not any(char.isspace() or ord(char) < 32 or char == '\\' for char in url)
+            and (port in (None, default_port) or _trusted_ip(parts.hostname, port) is not None)
         ):
             return True
     except ValueError:
@@ -30,9 +45,12 @@ def public_url_allowed(url):
     raise FetchError('url_blocked', 'Нужен публичный HTTP(S)-адрес страницы', retryable=False)
 
 
-def fetch_public_html(url, *, timeout_seconds, max_bytes):
+def fetch_public_html(url, *, timeout_seconds, max_bytes, url_allowed=None):
+    def target_allowed(target):
+        return (url_allowed is None or url_allowed(target)) and public_url_allowed(target)
+
     return fetch_html(
-        url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, url_allowed=public_url_allowed,
+        url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, url_allowed=target_allowed,
         handlers=(ProxyHandler({}), _PublicHTTPHandler(), _PublicHTTPSHandler()),
     )
 
@@ -49,8 +67,12 @@ def _public_address(address):
 
 def _connect_public(address, timeout, source_address=None):
     deadline = monotonic() + timeout
+    trusted_ip = _trusted_ip(*address)
     addresses = socket.getaddrinfo(*address, type=socket.SOCK_STREAM)
-    if not addresses or any(not _public_address(info[4][0]) for info in addresses):
+    if not addresses or any(
+        ipaddress.ip_address(info[4][0]) != trusted_ip and not _public_address(info[4][0])
+        for info in addresses
+    ):
         raise FetchError('url_blocked', 'Адрес ведёт в закрытую сеть', retryable=False)
 
     # Подключаемся к уже проверенному IP без повторного разрешения имени.

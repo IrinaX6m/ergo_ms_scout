@@ -1,8 +1,10 @@
 """Обход одного сайта: циклы, дубли, фильтры, пауза и потеря исполнителя."""
 
+import os
 import threading
 from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -11,6 +13,7 @@ from django.utils import timezone
 from modules.scout.api.models import CrawlURL, Record, Task
 from modules.scout.api.services.constants import RUN_COMPLETED, RUN_RUNNING, TASK_PENDING
 from modules.scout.api.services.frontier import discover, remember
+from modules.scout.api.services.public_http import fetch_public_html
 from modules.scout.api.services.runs import approve_run, create_job, explore_job, pause_run, resume_run, start_run, _finish_if_idle
 from modules.scout.api.services.tasks_exec import publish_ready, recover_expired_leases
 
@@ -71,6 +74,8 @@ def _site(port_holder):
 
 
 def _body(path, host):
+    if path == '/other-port':
+        return '<h1>Port</h1><a href="http://127.0.0.1:1/private">private</a>'
     if path.startswith('/storm'):
         return '<h1>Storm</h1>' + ''.join(f'<a href="/{i}.pdf">skip</a>' for i in range(60))
     if path.startswith('/wide'):
@@ -118,8 +123,6 @@ def _body(path, host):
 
 class CrawlTests(TestCase):
     def setUp(self):
-        import os
-        os.environ['SCOUT_TASK_RUNNER'] = 'inline'
         self.user = get_user_model().objects.create_superuser(
             username='scout-crawl',
             email='scout-crawl@example.com',
@@ -131,6 +134,10 @@ class CrawlTests(TestCase):
         self.thread.start()
         host, port = self.server.server_address
         self.origin = f'http://{host}:{port}'
+        self.enterContext(patch.dict(os.environ, {
+            'SCOUT_TASK_RUNNER': 'inline',
+            'SCOUT_TRUSTED_FETCH_ENDPOINTS': f'{host}:{port}',
+        }))
 
     def tearDown(self):
         self.server.shutdown()
@@ -504,14 +511,20 @@ class CrawlTests(TestCase):
         self.assertFalse(Task.objects.filter(run=run, idempotency_key=f'fetch:{blocked.url_key}').exists())
 
     def test_redirect_cannot_escape_allowed_host(self):
-        from modules.scout.api.services.http_fetch import fetch_html
         from modules.scout.api.services.url_norm import host_allowed
         from modules.scout.api.services.errors import FetchError
 
         with self.assertRaises(FetchError) as caught:
-            fetch_html(f'{self.origin}/out', timeout_seconds=5, max_bytes=1000,
-                       url_allowed=lambda url: host_allowed(url, ['127.0.0.1']))
+            fetch_public_html(f'{self.origin}/out', timeout_seconds=5, max_bytes=1000,
+                              url_allowed=lambda url: host_allowed(url, ['127.0.0.1']))
         self.assertEqual(caught.exception.code, 'redirect_scope')
+
+    def test_crawl_rejects_an_untrusted_port_on_an_allowed_host(self):
+        run = self._crawl('/other-port')
+        blocked = run.tasks.get(kind='fetch', payload__url='http://127.0.0.1:1/private')
+        self.assertEqual(blocked.error_code, 'url_blocked')
+        self.assertEqual(blocked.status, 'failed')
+        self.assertEqual(blocked.attempt_count, 1)
 
 
 class AccessTests(TestCase):

@@ -33,7 +33,7 @@ from .constants import (
 )
 from .errors import FetchError, ScoutError
 from .html_extract import extract_html
-from .http_fetch import fetch_html
+from .public_http import fetch_public_html
 from .journal import append_event, describe_extract
 from .runs import advance_run, _finish_if_idle
 from .snapshot_store import read_snapshot_bytes, store_snapshot_bytes
@@ -242,7 +242,7 @@ def _fetch(task: Task, token: int) -> None:
             return bool(normalized and host_allowed(normalized, crawl.get('allowed_hosts'))
                         and (task.run.status == 'exploring' or rules_match(normalized, crawl.get('visit'))))
 
-    result = fetch_html(
+    result = fetch_public_html(
         task.payload['url'],
         timeout_seconds=timeout,
         max_bytes=int(task.payload.get('byte_allowance') or limits['max_bytes']),
