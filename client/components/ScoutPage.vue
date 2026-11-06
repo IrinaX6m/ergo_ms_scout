@@ -37,6 +37,7 @@ const {
   dirty,
   stage,
   planReady,
+  confirmationPlan,
   canConfirm,
   canExport,
   previewRows,
@@ -76,6 +77,7 @@ const shownRecords = computed(() =>
   stage.value === 'collect' ? records.value.slice(-20) : records.value,
 )
 const shownPreview = computed(() => previewRows.value.slice(0, 20))
+const sidebarPlan = computed(() => (stage.value === 'confirm' ? confirmationPlan.value : payload()))
 const journal = computed(() => [...(run.value?.journal || []), ...(run.value?.events || [])])
 const gaps = computed(() =>
   shownPreview.value.reduce(
@@ -320,7 +322,13 @@ function openSystemSettings() {
           <div class="scout-panel-content">
             <h2 class="h5">{{ t('scout.workspace.confirmPlan') }}</h2>
             <p class="scout-muted">{{ t('scout.workspace.beforeStart') }}</p>
-            <ScoutPlanSummary :plan="payload()" :mode="mode" expanded :approved="!!run?.approved" />
+            <ScoutPlanSummary
+              v-if="confirmationPlan"
+              :plan="confirmationPlan"
+              :mode="mode"
+              expanded
+              :approved="!!run?.approved"
+            />
             <div class="alert alert-info mt-4 mb-0">{{ t('scout.workspace.confirmHint') }}</div>
             <p v-if="run?.approved" class="scout-warning mt-3 mb-0" role="status">
               {{ t('scout.flow.startHeld') }}
@@ -503,10 +511,10 @@ function openSystemSettings() {
             </li>
           </ol></template
         >
-        <template v-else
-          ><h2 class="h6">{{ t('scout.workspace.planTitle') }}</h2>
-          <ScoutPlanSummary :plan="payload()" :mode="mode" :approved="!!run?.approved"
-        /></template>
+        <template v-else-if="sidebarPlan">
+          <h2 class="h6">{{ t('scout.workspace.planTitle') }}</h2>
+          <ScoutPlanSummary :plan="sidebarPlan" :mode="mode" :approved="!!run?.approved" />
+        </template>
         <p class="scout-sidebar-note">{{ t('scout.workspace.previewOnly') }}</p>
       </aside>
     </div>

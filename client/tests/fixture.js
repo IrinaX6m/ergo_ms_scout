@@ -19,6 +19,9 @@ const fixture = {
   systemOpened: 0,
   failAction: '',
   networkDown: false,
+  deferNextRecords: false,
+  releaseRecords: null,
+  pauseStatus: 'pausing',
   run: null,
   job: null,
   setStatus(status) {
@@ -47,7 +50,15 @@ const rows = () =>
 apiClient.get = async (url) => {
   fixture.calls.push(['get', url])
   if (fixture.networkDown) throw new Error('Fixture network interruption')
-  if (url.endsWith('/records/')) return result({ records: rows() })
+  if (url.endsWith('/records/')) {
+    if (fixture.deferNextRecords) {
+      fixture.deferNextRecords = false
+      await new Promise((resolve) => {
+        fixture.releaseRecords = resolve
+      })
+    }
+    return result({ records: rows() })
+  }
   if (url.startsWith('scout/jobs/')) return result(fixture.job)
   if (url.startsWith('scout/runs/')) return result(fixture.run)
   return result({})
@@ -91,7 +102,7 @@ apiClient.post = async (url, body) => {
     fixture.run.status = 'running'
     fixture.run.record_count = 25
   }
-  if (action === 'pause') fixture.run.status = 'pausing'
+  if (action === 'pause') fixture.run.status = fixture.pauseStatus
   if (action === 'resume') fixture.run.status = 'running'
   if (action === 'cancel') fixture.run.status = 'cancelled'
   return result(fixture.run || {})

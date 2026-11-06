@@ -65,7 +65,7 @@ export function useScoutWorkflow() {
   const recordsError = ref(false)
   const pageError = ref('')
   const savedStamp = ref('')
-  const revisionHash = ref('')
+  const savedRevision = ref(null)
   const loadedJob = ref('')
   const exportKind = ref('json')
   const errors = reactive({ url: '', card: '', fields: [] })
@@ -126,8 +126,15 @@ export function useScoutWorkflow() {
     () =>
       loadedJob.value === query.value.job &&
       run.value?.public_id === query.value.run &&
-      planMatchesRun(run.value, loadedJob.value, revisionHash.value, stamp.value, savedStamp.value),
+      planMatchesRun(
+        run.value,
+        loadedJob.value,
+        savedRevision.value?.plan_hash,
+        stamp.value,
+        savedStamp.value,
+      ),
   )
+  const confirmationPlan = computed(() => (planReady.value ? savedRevision.value : null))
   const canConfirm = computed(
     () =>
       !loading.value &&
@@ -187,7 +194,7 @@ export function useScoutWorkflow() {
     applyingJob = false
     errors.fields = form.value.fields.map(() => '')
     loadedJob.value = job.public_id
-    revisionHash.value = revision.plan_hash || ''
+    savedRevision.value = revision
     savedStamp.value = stamp.value
   }
 
@@ -254,9 +261,14 @@ export function useScoutWorkflow() {
     }
   }
 
+  function invalidateRunLoad() {
+    runRequest += 1
+    runLoading.value = false
+  }
+
   function clearRun(updateQuery = true) {
     window.clearTimeout(pollTimer)
-    runRequest += 1
+    invalidateRunLoad()
     recordsRequest += 1
     run.value = null
     records.value = []
@@ -264,7 +276,6 @@ export function useScoutWorkflow() {
     confirmationOpen.value = null
     connectionLost.value = false
     recordsError.value = false
-    runLoading.value = false
     if (updateQuery) patchState({ run: '' })
   }
 
@@ -278,7 +289,7 @@ export function useScoutWorkflow() {
     form.value = blankForm()
     loadedJob.value = ''
     savedStamp.value = ''
-    revisionHash.value = ''
+    savedRevision.value = null
     pageError.value = ''
     Object.assign(errors, { url: '', card: '', fields: [] })
     editorStep.value = 'mode'
@@ -412,7 +423,7 @@ export function useScoutWorkflow() {
     const id = query.value.run
     const owner = context
     const currentOperation = ++operation
-    runRequest += 1
+    invalidateRunLoad()
     window.clearTimeout(pollTimer)
     busy.value = true
     try {
@@ -445,7 +456,7 @@ export function useScoutWorkflow() {
     const owner = context
     const currentOperation = ++operation
     busy.value = true
-    runRequest += 1
+    invalidateRunLoad()
     window.clearTimeout(pollTimer)
     try {
       if (!run.value.approved) {
@@ -561,7 +572,7 @@ export function useScoutWorkflow() {
     (id, previous) => {
       window.clearTimeout(pollTimer)
       if (id !== previous) {
-        runRequest += 1
+        invalidateRunLoad()
         recordsRequest += 1
         records.value = []
         connectionLost.value = false
@@ -597,6 +608,7 @@ export function useScoutWorkflow() {
     dirty,
     stage,
     planReady,
+    confirmationPlan,
     canConfirm,
     canExport,
     previewRows,

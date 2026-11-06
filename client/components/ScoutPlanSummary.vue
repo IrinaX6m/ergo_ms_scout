@@ -18,7 +18,12 @@ const { t } = useAppI18n()
     </div>
     <div>
       <dt>{{ t('scout.url') }}</dt>
-      <dd>{{ plan.seed_urls?.[0] || t('scout.workspace.notSpecified') }}</dd>
+      <dd>
+        <ul v-if="plan.seed_urls?.some(Boolean)" class="list-unstyled mb-0">
+          <li v-for="(url, index) in plan.seed_urls" :key="index">{{ url }}</li>
+        </ul>
+        <template v-else>{{ t('scout.workspace.notSpecified') }}</template>
+      </dd>
     </div>
     <div>
       <dt>{{ t('scout.workspace.resultFields') }}</dt>
@@ -67,7 +72,18 @@ const { t } = useAppI18n()
     </div>
     <div v-if="expanded && plan.crawl?.mode === 'site'">
       <dt>{{ t('scout.workspace.collectionBounds') }}</dt>
-      <dd><ScoutCrawlSummary :run="{ crawl: plan.crawl }" /></dd>
+      <dd><ScoutCrawlSummary :run="{ crawl: plan.crawl }" plan-details /></dd>
+    </div>
+    <div v-if="expanded && plan.limits">
+      <dt>{{ t('scout.workspace.requestLimits') }}</dt>
+      <dd>
+        {{
+          t('scout.workspace.requestBudget', {
+            bytes: plan.limits.max_bytes,
+            seconds: plan.limits.timeout_seconds,
+          })
+        }}
+      </dd>
     </div>
   </dl>
 </template>

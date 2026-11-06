@@ -176,9 +176,95 @@ async function main() {
     }
     await page.setViewportSize({ width: 1440, height: 1100 })
     await page.screenshot({ path: path.join(output, 'result-desktop.png'), fullPage: true })
+
+    // A saved job can contain multiple URLs and rule kinds that the editor cannot represent.
+    await page.evaluate(() => {
+      const fixture = window.__scoutTest
+      const jobId = '33333333-3333-4333-8333-333333333333'
+      const runId = '44444444-4444-4444-8444-444444444444'
+      const revision = {
+        ...fixture.job.revision,
+        plan_hash: 'multi-source-plan',
+        seed_urls: ['https://events.example/a', 'https://events.example/b'],
+        limits: { max_bytes: 1000000, timeout_seconds: 20 },
+        crawl: {
+          ...fixture.job.revision.crawl,
+          mode: 'site',
+          allowed_hosts: ['events.example'],
+          visit: [
+            { kind: 'contains', pattern: 'featured' },
+            { kind: 'prefix', pattern: 'https://events.example/b' },
+          ],
+          extract_on: [
+            { kind: 'prefix', pattern: 'https://events.example/a' },
+            { kind: 'contains', pattern: 'ticket' },
+          ],
+          preview_urls: ['https://events.example/sample-a', 'https://events.example/sample-b'],
+          drop_query: ['tracking_id'],
+        },
+      }
+      fixture.job = { ...fixture.job, public_id: jobId, revision }
+      fixture.run = {
+        ...fixture.run,
+        public_id: runId,
+        job_public_id: jobId,
+        plan_hash: revision.plan_hash,
+        crawl: revision.crawl,
+        approved: false,
+        status: 'awaiting_confirmation',
+        record_count: 0,
+      }
+      location.hash = `/?job=${jobId}&run=${runId}`
+    })
+    const openConfirmation = ui.getByRole('button', { name: 'К подтверждению', exact: true })
+    const confirmationHeading = ui.getByRole('heading', { name: 'Подтвердите план сбора' })
+    await openConfirmation.or(confirmationHeading).waitFor()
+    if (await openConfirmation.isVisible()) await openConfirmation.click()
+    await confirmationHeading.waitFor()
+    const plan = ui.locator('.scout-plan--expanded')
+    const planText = await plan.innerText()
+    for (const text of [
+      'https://events.example/a',
+      'https://events.example/b',
+      'содержит featured',
+      'начинается с https://events.example/b',
+      'содержит ticket',
+      'https://events.example/sample-b',
+      'tracking_id',
+      '1000000',
+    ]) {
+      assert.ok(planText.includes(text), `Saved confirmation plan is missing ${text}`)
+    }
+    const seedAddresses = plan.getByText('https://events.example/b', { exact: true })
+    assert.equal(await seedAddresses.count(), 1)
+    assert.equal(
+      await ui.getByRole('button', { name: 'Подтвердить план и запустить', exact: true }).isEnabled(),
+      true,
+    )
+    await checkWidths('confirm-multi-source')
+
+    // An immediate pause supersedes the run load while its records request is pending.
+    await page.evaluate(() => {
+      const fixture = window.__scoutTest
+      const runId = '55555555-5555-4555-8555-555555555555'
+      fixture.deferNextRecords = true
+      fixture.pauseStatus = 'paused'
+      fixture.run = { ...fixture.run, public_id: runId, status: 'running', record_count: 25 }
+      location.hash = `/?job=${fixture.job.public_id}&run=${runId}`
+    })
+    await page.waitForFunction(() => window.__scoutTest.releaseRecords !== null)
+    assert.equal(await ui.getAttribute('aria-busy'), 'true')
+    await ui.getByRole('button', { name: 'Пауза', exact: true }).click()
+    await ui.getByRole('button', { name: 'Продолжить', exact: true }).waitFor()
+    await page.evaluate(() => window.__scoutTest.releaseRecords())
+    await page.waitForFunction(
+      () => document.querySelector('.scout-workflow')?.getAttribute('aria-busy') === 'false',
+    )
+    assert.equal(await ui.getByRole('button', { name: 'Новое задание', exact: true }).isEnabled(), true)
+
     assert.deepEqual(errors, [])
     console.log(
-      'Scout browser checks passed: mode availability, draft, system event, preview, approval/start, pending pause, all records, provenance, pagination, themes, 320–1440px.',
+      'Scout browser checks passed: mode availability, draft, system event, preview, approval/start, full saved plan, pending and immediate pause, all records, provenance, pagination, themes, 320–1440px.',
     )
   } catch (error) {
     if (page) {
