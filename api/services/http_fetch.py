@@ -1,4 +1,4 @@
-"""HTTP-загрузка HTML с ограничением размера ответа."""
+"""HTTP-загрузка документов с ограничением размера ответа."""
 
 import gzip
 import io
@@ -40,21 +40,41 @@ class _LimitedRedirect(urlrequest.HTTPRedirectHandler):
 
 
 def fetch_html(url: str, *, timeout_seconds: int, max_bytes: int, url_allowed=None, handlers=()) -> dict:
+    result = _fetch_response(
+        url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, url_allowed=url_allowed,
+        handlers=handlers, accept='text/html,application/xhtml+xml', media_types=_HTML_TYPES,
+    )
+    content_type = result['content_type']
+    result['charset'] = detected_charset(result['body'], content_type)[:40]
+    result['content_type'] = content_type[:120]
+    return result
+
+
+def fetch_xml(url: str, *, timeout_seconds: int, max_bytes: int, url_allowed=None, handlers=()) -> dict:
+    return _fetch_response(
+        url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, url_allowed=url_allowed,
+        handlers=handlers, accept='application/xml,text/xml,application/gzip,application/octet-stream',
+    )
+
+
+def _fetch_response(url, *, timeout_seconds, max_bytes, url_allowed, handlers, accept, media_types=()) -> dict:
     if url_allowed is not None and not url_allowed(url):
         raise FetchError('url_scope', _('Адрес выходит за пределы плана'), retryable=False)
     opener = urlrequest.build_opener(_LimitedRedirect(url_allowed), *handlers)
     req = urlrequest.Request(
         url,
-        headers={'User-Agent': 'ERGO-SCOUT/0.1', 'Accept': 'text/html,application/xhtml+xml'},
+        headers={'User-Agent': 'ERGO-SCOUT/0.1', 'Accept': accept},
     )
     try:
         with opener.open(req, timeout=timeout_seconds) as response:
             status = getattr(response, 'status', None) or response.getcode()
             final_url = response.geturl()
             content_type = response.headers.get('Content-Type', '')
+            media = content_type.split(';', 1)[0].strip().lower()
+            if media_types and media and media not in media_types:
+                raise FetchError('not_html', _('Ответ не является HTML'), retryable=False)
             encoding = response.headers.get('Content-Encoding', '')
             body = _unwrap_content(_read_limited(response, max_bytes), encoding, max_bytes)
-            charset = detected_charset(body, content_type)
     except FetchError:
         raise
     except urlerror.HTTPError as exc:
@@ -69,14 +89,10 @@ def fetch_html(url: str, *, timeout_seconds: int, max_bytes: int, url_allowed=No
         logger.warning('SCOUT не загрузил страницу: %s', type(exc).__name__)
         raise FetchError('network', _('Не удалось загрузить страницу'), retryable=True) from exc
 
-    media = content_type.split(';', 1)[0].strip().lower()
-    if media and media not in _HTML_TYPES:
-        raise FetchError('not_html', _('Ответ не является HTML'), retryable=False)
     return {
         'status': int(status or 0),
         'final_url': final_url or url,
-        'content_type': content_type[:120],
-        'charset': charset[:40],
+        'content_type': content_type,
         'body': body,
     }
 

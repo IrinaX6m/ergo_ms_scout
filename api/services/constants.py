@@ -7,6 +7,7 @@ PROTOCOL_VERSION = 1
 TASK_FETCH = 'fetch'
 TASK_CRAWL = 'crawl'
 TASK_EXTRACT = 'extract'
+TASK_SITEMAP = 'sitemap'
 
 CRAWL_QUEUED = 'queued'
 CRAWL_ACTIVE = 'active'

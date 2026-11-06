@@ -30,11 +30,12 @@ from .constants import (
     TASK_LEASED,
     TASK_PENDING,
     TASK_RETRY_WAIT,
+    TASK_SITEMAP,
     TASK_SUCCEEDED,
 )
 from .errors import FetchError, ScoutError
 from .html_extract import extract_html
-from .public_http import fetch_public_html
+from .public_http import fetch_public_html, fetch_public_xml, public_url_allowed
 from .proxy_profiles import PROXY_FAILURES, PROXY_RETRY_DELAYS
 from .journal import append_event, describe_extract
 from .runs import advance_run, _finish_if_idle
@@ -158,6 +159,8 @@ def run_one(task_public_id: str, fencing_token: int) -> bool:
             _crawl(task, token)
         elif task.kind == TASK_EXTRACT:
             _extract(task, token)
+        elif task.kind == TASK_SITEMAP:
+            _load_sitemap(task, token)
         else:
             _fail(task, token, 'unknown_kind', 'Неизвестный вид задачи', retryable=False)
     except FetchError as exc:
@@ -240,6 +243,12 @@ def _claim(task_public_id: str, fencing_token: int):
                 return None
             from .crawl_budget import admit_fetch
             if not admit_fetch(run, task):
+                advance_run(run)
+                return None
+        elif task.kind == TASK_SITEMAP:
+            from .crawl_budget import enforce_deadline
+
+            if enforce_deadline(run):
                 advance_run(run)
                 return None
         task.fencing_token += 1
@@ -404,6 +413,49 @@ def _crawl(task: Task, token: int) -> None:
     _finish(task, token, write)
 
 
+def _load_sitemap(task: Task, token: int) -> None:
+    from .frontier import open_site
+    from .sitemap import sitemap_urls
+    from .url_norm import host_allowed
+
+    run = task.run
+    revision = run.job_revision
+    crawl = revision.crawl
+    remaining = crawl['max_seconds'] - (timezone.now() - run.started_at).total_seconds()
+    timeout = max(1, min(int(revision.limits['timeout_seconds']), math.ceil(remaining)))
+    byte_limit = min(revision.limits['max_bytes'], crawl['max_total_bytes'])
+    fetch = fetch_public_xml
+    target_allowed = public_url_allowed
+    proxy_params = {}
+    if revision_id := revision.proxy_profile_revision_public_id:
+        from .proxy_http import fetch_proxy_xml, proxy_target_allowed
+
+        fetch = fetch_proxy_xml
+        target_allowed = proxy_target_allowed
+        proxy_params = {'revision_id': revision_id, 'owner': run.user_public_id}
+    try:
+        result = fetch(
+            task.payload['url'], timeout_seconds=timeout, max_bytes=byte_limit,
+            url_allowed=lambda url: host_allowed(url, crawl['allowed_hosts']), **proxy_params,
+        )
+    except FetchError as exc:
+        raise FetchError(exc.code, f'Не удалось загрузить карту сайта. {exc}', retryable=exc.retryable) from exc
+    urls = []
+    for url in sitemap_urls(result['body']):
+        try:
+            target_allowed(url)
+        except FetchError:
+            continue
+        urls.append(url)
+
+    def write():
+        fresh = Run.objects.get(pk=task.run_id)
+        open_site(fresh, sitemap_urls=urls)
+        append_event(task.run_id, 'Карта сайта прочитана. Адреса проверены по правилам обхода.')
+
+    _finish(task, token, write)
+
+
 def _finish(task: Task, token: int, write) -> None:
     with transaction.atomic():
         run = Run.objects.select_for_update().get(pk=task.run_id)
@@ -464,7 +516,7 @@ def _fail(task: Task, token: int, code: str, message: str, *, retryable: bool) -
         else:
             locked.status = TASK_FAILED
             locked.lease_until = None
-            if locked.kind == TASK_FETCH and code in PROXY_FAILURES:
+            if locked.kind in (TASK_FETCH, TASK_SITEMAP) and code in PROXY_FAILURES:
                 from .crawl_budget import stop_fetches
 
                 run.stop_reason = code

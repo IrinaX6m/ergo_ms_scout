@@ -20,7 +20,7 @@ from urllib3.connection import HTTPSConnection
 from urllib3.connectionpool import HTTPSConnectionPool
 
 from .errors import FetchError
-from .http_fetch import fetch_html
+from .http_fetch import fetch_html, fetch_xml
 from .proxy_profiles import ip_authority, load_proxy
 from .public_http import _public_address, public_url_allowed
 from .url_norm import canonical_host
@@ -207,6 +207,20 @@ def proxy_target_allowed(url):
 
 
 def fetch_proxy_html(url, *, revision_id, owner, timeout_seconds, max_bytes, url_allowed=None, same_origin=False):
+    return _fetch_proxy(
+        fetch_html, url, revision_id=revision_id, owner=owner, timeout_seconds=timeout_seconds,
+        max_bytes=max_bytes, url_allowed=url_allowed, same_origin=same_origin,
+    )
+
+
+def fetch_proxy_xml(url, *, revision_id, owner, timeout_seconds, max_bytes, url_allowed=None):
+    return _fetch_proxy(
+        fetch_xml, url, revision_id=revision_id, owner=owner, timeout_seconds=timeout_seconds,
+        max_bytes=max_bytes, url_allowed=url_allowed, same_origin=False,
+    )
+
+
+def _fetch_proxy(fetch, url, *, revision_id, owner, timeout_seconds, max_bytes, url_allowed, same_origin):
     def target_allowed(target):
         return (
             proxy_target_allowed(target)
@@ -215,7 +229,7 @@ def fetch_proxy_html(url, *, revision_id, owner, timeout_seconds, max_bytes, url
         )
 
     try:
-        return fetch_html(
+        return fetch(
             url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, url_allowed=target_allowed,
             handlers=(ProxyHandler({}), _ProxyHTTPSHandler(revision_id, owner, timeout_seconds)),
         )

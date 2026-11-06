@@ -1,5 +1,6 @@
 """Обход одного сайта: циклы, дубли, фильтры, пауза и потеря исполнителя."""
 
+import gzip
 import os
 import threading
 from datetime import timedelta
@@ -11,9 +12,12 @@ from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from modules.scout.api.models import CrawlURL, Record, Run, Task
-from modules.scout.api.services.constants import RUN_COMPLETED, RUN_RUNNING, TASK_CRAWL, TASK_EXTRACT, TASK_FETCH, TASK_PENDING
+from modules.scout.api.services.constants import (
+    RUN_COMPLETED, RUN_FAILED, RUN_RUNNING, TASK_CRAWL, TASK_EXTRACT, TASK_FETCH, TASK_PENDING, TASK_SITEMAP,
+)
 from modules.scout.api.services.crawl_budget import reconcile
 from modules.scout.api.services.frontier import discover, remember
 from modules.scout.api.services.public_http import fetch_public_html
@@ -31,6 +35,33 @@ def _site(port_holder):
         def do_GET(self):
             host = self.headers.get('Host')
             path = self.path.split('?', 1)[0]
+            if path == '/missing.xml':
+                self.send_response(404)
+                self.end_headers()
+                return
+            if path.endswith(('.xml', '.xml.gz')):
+                Handler.hits[path] = Handler.hits.get(path, 0) + 1
+                urls = (f'http://{host}/item/1', f'http://{host}/item/1#again',
+                        f'http://localhost:{self.server.server_port}/item/0', f'http://{host}/outside',
+                        'http://127.0.0.1:1/item/private', f'http://{host}/item/2', f'http://{host}/item/3')
+                samples = {
+                    '/sitemap.xml.gz': '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+                    + ''.join(f'<url><loc>{url}</loc></url>' for url in urls) + '</urlset>',
+                    '/invalid.xml': '<urlset>',
+                    '/index.xml': '<sitemapindex/>',
+                    '/entity.xml': '<!DOCTYPE urlset [<!ENTITY x SYSTEM "file:///no-such-file">]>'
+                    '<urlset><url><loc>&x;</loc></url></urlset>',
+                    '/empty.xml': '<urlset><url><loc>/relative</loc></url></urlset>',
+                }
+                body = samples[path].encode()
+                compressed = path.endswith('.gz')
+                body = gzip.compress(body) if compressed else body
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/gzip' if compressed else 'application/xml')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             if path == '/out':
                 self.send_response(302)
                 self.send_header('Location', f'http://localhost:{self.server.server_port}/quiet')
@@ -188,6 +219,53 @@ class CrawlTests(TestCase):
         self.assertTrue(CrawlURL.objects.filter(run=run, skip_reason='document').exists())
         self.assertEqual(Task.objects.filter(run=run, kind='fetch', status='succeeded').count(), 2)
         self.assertEqual(Record.objects.filter(run=run).count(), 2)
+
+    def test_sitemap_api_uses_approved_plan_and_existing_frontier(self):
+        client = APIClient()
+        client.force_authenticate(self.user)
+        sitemap = f'{self.origin}/sitemap.xml.gz'
+        request = {
+            'title': 'Обход по карте', 'seed_urls': [f'{self.origin}/quiet'], 'fields': FIELDS,
+            'crawl': {'mode': 'site', 'sitemap_url': sitemap, 'max_pages': 2,
+                      'visit': [{'kind': 'prefix', 'pattern': '/item/'}]},
+        }
+        response = client.post('/api/scout/jobs/', request, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['revision']['crawl']['sitemap_url'], sitemap)
+        job_id = response.data['public_id']
+        response = client.post(f'/api/scout/jobs/{job_id}/explore/')
+        self.assertEqual(response.status_code, 202, response.data)
+        run_id = response.data['public_id']
+        publish_ready(run_id)
+        endpoint = f'/api/scout/runs/{run_id}/'
+        self.assertEqual(client.post(endpoint + 'start/').status_code, 409)
+        self.assertNotIn('/sitemap.xml.gz', self.server.RequestHandlerClass.hits)
+        self.assertEqual(client.post(endpoint + 'approve/').status_code, 200)
+        self.assertEqual(client.post(endpoint + 'start/').status_code, 202)
+        publish_ready(run_id)
+        run = Run.objects.get(public_id=run_id)
+        self.assertEqual(run.status, RUN_COMPLETED)
+        self.assertEqual(run.stop_reason, 'max_pages')
+        self.assertEqual(run.tasks.get(kind=TASK_SITEMAP).status, 'succeeded')
+        self.assertEqual(self.server.RequestHandlerClass.hits['/sitemap.xml.gz'], 1)
+        self.assertEqual(set(run.crawl_urls.filter(state='done').values_list('normalized_url', 'depth')), {
+            (f'{self.origin}/item/1', 0), (f'{self.origin}/item/2', 0),
+        })
+        self.assertEqual(run.tasks.filter(kind=TASK_FETCH, payload__has_key='crawl_public_id').count(), 2)
+        self.assertEqual(run.records.count(), 2)
+        self.assertFalse(run.snapshots.filter(source_url=sitemap).exists())
+
+    def test_bad_or_inaccessible_sitemap_fails_without_starting_site_fetches(self):
+        cases = {'/missing.xml': 'http_404', '/invalid.xml': 'sitemap_invalid', '/entity.xml': 'sitemap_invalid',
+                 '/index.xml': 'sitemap_index_unsupported', '/empty.xml': 'sitemap_empty', '/out': 'redirect_scope'}
+        for path, code in cases.items():
+            with self.subTest(code=code, path=path):
+                run = self._crawl('/quiet', sitemap_url=f'{self.origin}{path}')
+                self.assertEqual(run.status, RUN_FAILED)
+                task = run.tasks.get(kind=TASK_SITEMAP)
+                self.assertEqual(task.error_code, code)
+                self.assertEqual(run.error_summary, task.error_message)
+                self.assertFalse(run.crawl_urls.exists())
 
     def test_discovery_batches_keep_link_order_and_limits(self):
         run = self._open('/quiet', max_pages=3, frontier_cap=6)

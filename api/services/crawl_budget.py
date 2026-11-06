@@ -6,7 +6,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from ..models import Attempt, CrawlURL, PageSnapshot, Task
-from .constants import TASK_FETCH, TASK_LEASED, TASK_PENDING, TASK_RETRY_WAIT, TASK_CANCELLED
+from .constants import TASK_FETCH, TASK_LEASED, TASK_PENDING, TASK_RETRY_WAIT, TASK_CANCELLED, TASK_SITEMAP
 
 
 def snapshot_bytes(run) -> int:
@@ -18,8 +18,8 @@ def stop_fetches(run, reason) -> None:
     if not run.stop_reason:
         run.stop_reason = reason
         run.save(update_fields=['stop_reason'])
-    pending = Task.objects.filter(run=run, kind=TASK_FETCH, status__in=(TASK_PENDING, TASK_RETRY_WAIT))
-    keys = [key.removeprefix('fetch:') for key in pending.values_list('idempotency_key', flat=True)]
+    pending = Task.objects.filter(run=run, kind__in=(TASK_FETCH, TASK_SITEMAP), status__in=(TASK_PENDING, TASK_RETRY_WAIT))
+    keys = [key.removeprefix('fetch:') for key in pending.filter(kind=TASK_FETCH).values_list('idempotency_key', flat=True)]
     pending.update(status=TASK_CANCELLED, lease_until=None, published_at=None)
     CrawlURL.objects.filter(run=run, url_key__in=keys, state='active').update(
         state='skipped', skip_reason=reason,

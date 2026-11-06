@@ -34,13 +34,18 @@ def blocks_completion(run: Run) -> bool:
     return CrawlURL.objects.filter(run=run, state__in=(CRAWL_QUEUED, CRAWL_ACTIVE)).exists()
 
 
-def open_site(run: Run) -> None:
-    """После подтверждения семена не качаются повторно, с них начинается обход."""
+def open_site(run: Run, sitemap_urls: tuple[str, ...] | list[str] = ()) -> None:
+    """Начальные страницы и адреса карты открывают обход на глубине 0."""
     crawl = _config(run)
     if crawl.get('mode') != 'site':
         return
     for url in run.job_revision.seed_urls:
         remember(run, url, base=url, depth=0, parent=None)
+    for offset in range(0, len(sitemap_urls), _DISCOVERY_BATCH_SIZE):
+        if run.stop_reason == 'frontier':
+            break
+        batch = sitemap_urls[offset:offset + _DISCOVERY_BATCH_SIZE]
+        _register_urls(run, crawl, batch, base='', depth=0, parent=None)
 
 
 def note_fetch(run: Run, snapshot: PageSnapshot) -> None:
@@ -69,11 +74,14 @@ def discover(run: Run, snapshot: PageSnapshot, body: bytes) -> None:
     page = snapshot.final_url or snapshot.source_url
     hrefs, base = iter_hrefs(body, snapshot.content_type, snapshot.charset, page)
     for offset in range(0, len(hrefs), _DISCOVERY_BATCH_SIZE):
-        batch = hrefs[offset:offset + _DISCOVERY_BATCH_SIZE]
-        if len(batch) > 1 and _register_batch(run, crawl, batch, base=base, depth=depth, parent=parent):
-            continue
-        for href in batch:
-            remember(run, href, base=base, depth=depth, parent=parent)
+        _register_urls(run, crawl, hrefs[offset:offset + _DISCOVERY_BATCH_SIZE], base=base, depth=depth, parent=parent)
+
+
+def _register_urls(run, crawl, urls, *, base, depth, parent):
+    if len(urls) > 1 and _register_batch(run, crawl, urls, base=base, depth=depth, parent=parent):
+        return
+    for url in urls:
+        remember(run, url, base=base, depth=depth, parent=parent)
 
 
 def _register_batch(run: Run, crawl: dict, hrefs: list[str], *, base: str, depth: int, parent) -> bool:

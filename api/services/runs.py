@@ -36,6 +36,7 @@ from .constants import (
     TASK_LEASED,
     TASK_PENDING,
     TASK_RETRY_WAIT,
+    TASK_SITEMAP,
 )
 from .errors import ScoutError
 from .plan import normalize_plan, plan_hash
@@ -131,7 +132,13 @@ def start_run(*, run: Run) -> Run:
         locked.status = RUN_RUNNING
         locked.started_at = timezone.now()
         locked.save(update_fields=['status', 'started_at'])
-        if (locked.job_revision.crawl or {}).get('mode') == 'site':
+        crawl = locked.job_revision.crawl or {}
+        if sitemap := crawl.get('sitemap_url'):
+            Task.objects.create(
+                run=locked, kind=TASK_SITEMAP, status=TASK_PENDING,
+                idempotency_key='sitemap', payload={'url': sitemap}, fencing_token=1,
+            )
+        elif crawl.get('mode') == 'site':
             from .frontier import open_site
             open_site(locked)
         else:
@@ -225,8 +232,11 @@ def _finish_if_idle(locked: Run) -> None:
         return
     if blocks_completion(locked):
         return
-    failed = locked.tasks.filter(status=TASK_FAILED).exists()
-    if locked.stop_reason in PROXY_FAILURES and not (locked.records.exists() or locked.crawl_urls.filter(state='done').exists()):
+    failed_tasks = locked.tasks.filter(status=TASK_FAILED)
+    failed = failed_tasks.exists()
+    if failed and (locked.job_revision.crawl or {}).get('sitemap_url') and failed_tasks.filter(kind=TASK_SITEMAP).exists():
+        locked.status = RUN_FAILED
+    elif locked.stop_reason in PROXY_FAILURES and not (locked.records.exists() or locked.crawl_urls.filter(state='done').exists()):
         locked.status = RUN_FAILED
     else:
         locked.status = RUN_COMPLETED_WITH_ERRORS if failed or locked.stop_reason in PROXY_FAILURES else RUN_COMPLETED
@@ -267,8 +277,11 @@ def _bind_proxy(plan, revision_id, owner):
     if revision_id is not None:
         from .proxy_http import proxy_target_allowed
 
-        for url in [*plan['seed_urls'], *plan['crawl'].get('preview_urls', [])]:
+        crawl = plan['crawl']
+        for url in [*plan['seed_urls'], *crawl.get('preview_urls', [])]:
             proxy_target_allowed(url)
+        if sitemap := crawl.get('sitemap_url'):
+            proxy_target_allowed(sitemap)
         plan['proxy_profile_revision_public_id'] = str(revision_id)
 
 

@@ -4,12 +4,13 @@ import hashlib
 import json
 import re
 
-from urllib.parse import urlparse
+from urllib.parse import urldefrag, urlparse
 
 from django.utils.translation import gettext as _
 
 from .constants import CRAWL_LIMITS, DEFAULT_LIMITS, DROP_QUERY
 from .errors import ScoutError
+from .public_http import public_url_allowed
 from .url_norm import canonical_host, resolve_url, host_allowed
 from .value_types import clean_conversion, typed_csv_columns
 
@@ -158,6 +159,18 @@ def _clean_crawl(crawl, seed_urls) -> dict:
             result['preview_urls'].append(normalized)
     if len(result['preview_urls']) > result['preview_pages']:
         raise ScoutError('invalid', _('Превышен лимит страниц предпросмотра'))
+    sitemap = raw.get('sitemap_url')
+    if sitemap is not None:
+        if not isinstance(sitemap, str):
+            raise ScoutError('invalid', _('Адрес карты сайта должен быть строкой'))
+        sitemap = sitemap.strip()
+        if sitemap:
+            if mode != 'site' or len(sitemap) > 2000:
+                raise ScoutError('invalid', _('Для карты сайта нужен режим обхода и адрес до 2000 символов'))
+            public_url_allowed(sitemap)
+            if not host_allowed(sitemap, hosts):
+                raise ScoutError('invalid', _('Адрес карты сайта выходит за пределы обхода'))
+            result['sitemap_url'] = urldefrag(sitemap).url
     return result
 
 
