@@ -27,6 +27,8 @@ def revision_payload(revision) -> dict:
         'limits': revision.limits,
         'crawl': revision.crawl or {'mode': 'pages'},
         'plan_hash': revision.plan_hash,
+        **({'proxy_profile_revision_public_id': str(revision.proxy_profile_revision_public_id)}
+           if revision.proxy_profile_revision_public_id else {}),
         'approved': approved,
     }
 

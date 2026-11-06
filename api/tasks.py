@@ -73,3 +73,6 @@ def load_visual_snapshot(public_id: str):
 @shared_task(name='modules.scout.api.tasks.clean_visual_snapshots', ignore_result=True)
 def clean_visual_snapshots():
     delete_expired_snapshots()
+    from .services.proxy_profiles import prune_proxy_credentials
+
+    prune_proxy_credentials()

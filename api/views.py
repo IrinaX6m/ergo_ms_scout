@@ -63,6 +63,7 @@ class JobListCreateView(BaseAPIView):
                 fields=request.data.get('fields') or [],
                 record=request.data.get('record'),
                 crawl=request.data.get('crawl'),
+                proxy_profile_revision_public_id=request.data.get('proxy_profile_revision_public_id'),
             )
         except ScoutError as exc:
             return Response(error_payload(exc), status=error_status(exc))
@@ -89,6 +90,8 @@ class JobDetailView(BaseAPIView):
                 record=request.data.get('record'),
                 title=request.data.get('title'),
                 crawl=request.data.get('crawl'),
+                **({'proxy_profile_revision_public_id': request.data['proxy_profile_revision_public_id']}
+                   if 'proxy_profile_revision_public_id' in request.data else {}),
             )
         except ScoutError as exc:
             return Response(error_payload(exc), status=error_status(exc))

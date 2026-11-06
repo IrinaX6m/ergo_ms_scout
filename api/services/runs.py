@@ -39,18 +39,25 @@ from .constants import (
 )
 from .errors import ScoutError
 from .plan import normalize_plan, plan_hash
+from .proxy_profiles import PROXY_FAILURES, validate_revision
 
 
-def create_job(*, user_public_id, title: str, seed_urls, fields, record=None, crawl=None) -> Job:
+def create_job(*, user_public_id, title: str, seed_urls, fields, record=None, crawl=None,
+               proxy_profile_revision_public_id=None) -> Job:
     plan = normalize_plan(seed_urls, fields, record=record, crawl=crawl)
     clean_title = _clean_title(title)
     with transaction.atomic():
+        _bind_proxy(plan, proxy_profile_revision_public_id, user_public_id)
         job = Job.objects.create(user_public_id=user_public_id, title=clean_title)
         _create_revision(job, 1, plan)
     return job
 
 
-def revise_job(*, job: Job, seed_urls, fields, record=None, title=None, crawl=None) -> JobRevision:
+_KEEP_PROXY = object()
+
+
+def revise_job(*, job: Job, seed_urls, fields, record=None, title=None, crawl=None,
+               proxy_profile_revision_public_id=_KEEP_PROXY) -> JobRevision:
     plan = normalize_plan(seed_urls, fields, record=record, crawl=crawl)
     with transaction.atomic():
         locked_job = Job.objects.select_for_update().get(pk=job.pk)
@@ -60,6 +67,9 @@ def revise_job(*, job: Job, seed_urls, fields, record=None, title=None, crawl=No
             locked_job.title = _clean_title(title)
             locked_job.save(update_fields=['title', 'updated_at'])
         current = _latest_revision(locked_job)
+        if proxy_profile_revision_public_id is _KEEP_PROXY:
+            proxy_profile_revision_public_id = current.proxy_profile_revision_public_id if current else None
+        _bind_proxy(plan, proxy_profile_revision_public_id, locked_job.user_public_id)
         number = 1 if current is None else current.revision_number + 1
         return _create_revision(locked_job, number, plan)
 
@@ -73,6 +83,7 @@ def explore_job(*, job: Job, user_public_id) -> Run:
         revision = _latest_revision(job)
         if revision is None:
             raise ScoutError('invalid', _('У задания нет плана'))
+        validate_revision(revision.proxy_profile_revision_public_id, user_public_id, lock=True)
         run = Run.objects.create(
             job_revision=revision,
             user_public_id=user_public_id,
@@ -183,7 +194,7 @@ def advance_run(run: Run) -> None:
     if locked.status == RUN_EXPLORING:
         if open_tasks.filter(kind=TASK_FETCH).exists():
             return
-        if locked.snapshots.exists():
+        if locked.stop_reason not in PROXY_FAILURES and locked.snapshots.exists():
             locked.status = RUN_AWAITING
         else:
             locked.status = RUN_FAILED
@@ -215,7 +226,10 @@ def _finish_if_idle(locked: Run) -> None:
     if blocks_completion(locked):
         return
     failed = locked.tasks.filter(status=TASK_FAILED).exists()
-    locked.status = RUN_COMPLETED_WITH_ERRORS if failed else RUN_COMPLETED
+    if locked.stop_reason in PROXY_FAILURES and not (locked.records.exists() or locked.crawl_urls.filter(state='done').exists()):
+        locked.status = RUN_FAILED
+    else:
+        locked.status = RUN_COMPLETED_WITH_ERRORS if failed or locked.stop_reason in PROXY_FAILURES else RUN_COMPLETED
     locked.finished_at = timezone.now()
     locked.error_summary = _summary(locked)
     locked.save(update_fields=['status', 'finished_at', 'error_summary'])
@@ -248,6 +262,16 @@ def _ensure_extract_tasks(run: Run) -> None:
             task.save()
 
 
+def _bind_proxy(plan, revision_id, owner):
+    revision_id = validate_revision(revision_id, owner, lock=True)
+    if revision_id is not None:
+        from .proxy_http import proxy_target_allowed
+
+        for url in [*plan['seed_urls'], *plan['crawl'].get('preview_urls', [])]:
+            proxy_target_allowed(url)
+        plan['proxy_profile_revision_public_id'] = str(revision_id)
+
+
 def _create_revision(job: Job, number: int, plan: dict) -> JobRevision:
     digest = plan_hash(plan)
     revision = JobRevision.objects.create(
@@ -258,6 +282,7 @@ def _create_revision(job: Job, number: int, plan: dict) -> JobRevision:
         record=plan['record'] or {},
         limits=plan['limits'],
         crawl=plan['crawl'],
+        proxy_profile_revision_public_id=plan.get('proxy_profile_revision_public_id'),
         plan_hash=digest,
     )
     schema_fields = [{'name': item['name']} for item in plan['fields']]

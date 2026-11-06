@@ -30,7 +30,9 @@ class VisualSnapshotCreateView(BaseAPIView):
     def post(self, request):
         try:
             data = _request_object(request.data)
-            snapshot = create_snapshot(require_user_public_id(request.user), data.get('url'))
+            snapshot = create_snapshot(
+                require_user_public_id(request.user), data.get('url'), data.get('proxy_profile_revision_public_id'),
+            )
         except ScoutError as exc:
             return Response(error_payload(exc), status=error_status(exc))
         transaction.on_commit(lambda: enqueue_snapshot(snapshot.public_id), using=snapshot._state.db)

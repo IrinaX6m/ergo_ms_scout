@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .proxy_views import ProxyProfileCheckView, ProxyProfilesView, ProxyProfileView
 from .views import (
     HealthView,
     JobDetailView,
@@ -18,6 +19,9 @@ from .visual_views import VisualSnapshotCheckView, VisualSnapshotCreateView, Vis
 
 urlpatterns = [
     path('health/', HealthView.as_view(), name='scout-health'),
+    path('proxy-profiles/', ProxyProfilesView.as_view(), name='scout-proxy-profiles'),
+    path('proxy-profiles/<uuid:public_id>/', ProxyProfileView.as_view(), name='scout-proxy-profile'),
+    path('proxy-profiles/<uuid:public_id>/check/', ProxyProfileCheckView.as_view(), name='scout-proxy-check'),
     path('visual-snapshots/', VisualSnapshotCreateView.as_view(), name='scout-visual-snapshots'),
     path('visual-snapshots/<uuid:public_id>/', VisualSnapshotDetailView.as_view(), name='scout-visual-snapshot'),
     path('visual-snapshots/<uuid:public_id>/check/', VisualSnapshotCheckView.as_view(), name='scout-visual-check'),

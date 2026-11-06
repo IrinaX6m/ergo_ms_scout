@@ -2,14 +2,18 @@
 
 import logging
 from datetime import timedelta
+from time import sleep
 
+from django.db import transaction
 from django.utils import timezone
 from kombu.exceptions import OperationalError
 
 from ..models import VisualSnapshot
 from .constants import DEFAULT_LIMITS
-from .errors import ScoutError
+from .errors import FetchError, ScoutError
 from .public_http import fetch_public_html, public_url_allowed
+from .proxy_http import fetch_proxy_html, proxy_target_allowed
+from .proxy_profiles import PROXY_RETRY_DELAYS, validate_revision
 from .tasks_exec import inline_runner
 from .visual_rules import VisualDocument
 
@@ -19,11 +23,17 @@ _LOAD_DEADLINE = timedelta(minutes=2)
 _PENDING = ('queued', 'fetching')
 
 
-def create_snapshot(user_public_id, url):
+def create_snapshot(user_public_id, url, proxy_profile_revision_public_id=None):
     if not isinstance(url, str) or len(url) > 2000 or not url.startswith(('http://', 'https://')):
         raise ScoutError('invalid', 'Укажите HTTP(S)-адрес страницы длиной до 2000 символов')
     public_url_allowed(url)
-    return VisualSnapshot.objects.create(user_public_id=user_public_id, source_url=url)
+    with transaction.atomic():
+        revision_id = validate_revision(proxy_profile_revision_public_id, user_public_id, lock=True)
+        if revision_id:
+            proxy_target_allowed(url)
+        return VisualSnapshot.objects.create(
+            user_public_id=user_public_id, source_url=url, proxy_profile_revision_public_id=revision_id,
+        )
 
 
 def enqueue_snapshot(public_id):
@@ -46,9 +56,7 @@ def load_snapshot(public_id):
         return
     snapshot = pending.get()
     try:
-        page = fetch_public_html(
-            snapshot.source_url, timeout_seconds=DEFAULT_LIMITS['timeout_seconds'], max_bytes=DEFAULT_LIMITS['max_bytes'],
-        )
+        page = _fetch_snapshot(snapshot)
         VisualDocument(page['body'], page['charset'])
     except ScoutError as exc:
         result = {'status': 'failed', 'error_code': exc.code, 'error_detail': str(exc)[:400]}
@@ -58,6 +66,23 @@ def load_snapshot(public_id):
     else:
         result = {'status': 'ready', 'body': page['body'], 'charset': page['charset'], 'final_url': page['final_url']}
     pending.filter(status='fetching', created_at__gt=timezone.now() - _LOAD_DEADLINE).update(**result)
+
+
+def _fetch_snapshot(snapshot):
+    if not snapshot.proxy_profile_revision_public_id:
+        return fetch_public_html(
+            snapshot.source_url, timeout_seconds=DEFAULT_LIMITS['timeout_seconds'], max_bytes=DEFAULT_LIMITS['max_bytes'],
+        )
+    for delay in (*PROXY_RETRY_DELAYS, None):
+        try:
+            return fetch_proxy_html(
+                snapshot.source_url, revision_id=snapshot.proxy_profile_revision_public_id,
+                owner=snapshot.user_public_id, timeout_seconds=10, max_bytes=DEFAULT_LIMITS['max_bytes'],
+            )
+        except FetchError as exc:
+            if exc.code != 'proxy_unavailable' or delay is None:
+                raise
+        sleep(delay)
 
 
 def snapshot_status(snapshot):

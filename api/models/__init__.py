@@ -26,6 +26,7 @@ class JobRevision(PublicIdMixin, models.Model):
     record = models.JSONField(default=dict, blank=True)
     limits = models.JSONField(default=dict)
     crawl = models.JSONField(default=dict, blank=True)
+    proxy_profile_revision_public_id = models.UUIDField(null=True, blank=True)
     plan_hash = models.CharField(max_length=64)
     approved_plan_hash = models.CharField(max_length=64, blank=True, default='')
     approved_at = models.DateTimeField(null=True, blank=True)
@@ -135,6 +136,7 @@ class PageSnapshot(PublicIdMixin, models.Model):
 
 class VisualSnapshot(PublicIdMixin, models.Model):
     user_public_id = models.UUIDField()
+    proxy_profile_revision_public_id = models.UUIDField(null=True, blank=True)
     source_url = models.CharField(max_length=2000)
     final_url = models.TextField(blank=True, default='')
     status = models.CharField(max_length=12, default='queued')
@@ -143,6 +145,19 @@ class VisualSnapshot(PublicIdMixin, models.Model):
     error_code = models.CharField(max_length=64, blank=True, default='')
     error_detail = models.CharField(max_length=400, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+
+class ProxyProfile(PublicIdMixin, models.Model):
+    user_public_id = models.UUIDField(db_index=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+
+class ProxyProfileRevision(PublicIdMixin, models.Model):
+    profile = models.ForeignKey(ProxyProfile, on_delete=models.CASCADE, related_name='revisions')
+    ip = models.GenericIPAddressField()
+    port = models.PositiveIntegerField()
+    key_id = models.CharField(max_length=80, editable=False)
+    ciphertext = models.TextField(blank=True, editable=False)
 
 
 class Record(PublicIdMixin, models.Model):

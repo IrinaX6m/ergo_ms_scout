@@ -20,9 +20,10 @@ def _health(**_kwargs):
 def _on_user_delete(*, user_public_id=None, **_kwargs):
     if not user_public_id:
         return
-    from .models import Job
+    from .models import Job, ProxyProfile
 
     Job.objects.filter(user_public_id=user_public_id).delete()
+    ProxyProfile.objects.filter(user_public_id=user_public_id).delete()
 
 
 bridge.provide_many(

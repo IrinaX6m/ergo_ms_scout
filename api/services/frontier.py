@@ -23,6 +23,7 @@ from .constants import (
     TASK_RETRY_WAIT,
 )
 from .page_links import iter_hrefs
+from .proxy_profiles import PROXY_FAILURES
 from .url_norm import host_allowed, resolve_url, rules_match, url_key
 
 _COUNTING = (CRAWL_QUEUED, CRAWL_ACTIVE, CRAWL_DONE, CRAWL_FAILED)
@@ -256,7 +257,7 @@ def _spread(run: Run, row: CrawlURL) -> None:
 
 
 def _budget_closed(run: Run, crawl: dict, *, usage: tuple[int, int, int] | None = None) -> bool:
-    if run.stop_reason in ('time', 'bytes', 'frontier'):
+    if run.stop_reason in ('time', 'bytes', 'frontier') or run.stop_reason in PROXY_FAILURES:
         return True
     used, frontier_size, total_bytes = usage if usage is not None else (None, None, None)
     if used is None:

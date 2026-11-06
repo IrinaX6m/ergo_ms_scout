@@ -35,6 +35,7 @@ from .constants import (
 from .errors import FetchError, ScoutError
 from .html_extract import extract_html
 from .public_http import fetch_public_html
+from .proxy_profiles import PROXY_FAILURES, PROXY_RETRY_DELAYS
 from .journal import append_event, describe_extract
 from .runs import advance_run, _finish_if_idle
 from .snapshot_store import read_snapshot_bytes, store_snapshot_bytes
@@ -85,7 +86,9 @@ def publish_ready(run_public_id=None) -> None:
         except Exception:
             logger.exception('SCOUT не опубликовал задачу %s', task.public_id)
             continue
-        Task.objects.filter(pk=task.pk).update(published_at=now)
+        Task.objects.filter(pk=task.pk, fencing_token=token, status__in=(TASK_PENDING, TASK_RETRY_WAIT)).update(
+            published_at=now,
+        )
 
 
 def _settle_idle_runs(run_public_id=None) -> None:
@@ -224,11 +227,12 @@ def _claim(task_public_id: str, fencing_token: int):
         if run.status not in CLAIMABLE_RUN_STATUSES:
             return None
         if task.kind == TASK_FETCH:
-            limit = int((run.job_revision.crawl or {}).get('parallel_fetch') or 2)
+            proxy = run.job_revision.proxy_profile_revision_public_id
+            limit = 1 if proxy else int((run.job_revision.crawl or {}).get('parallel_fetch') or 2)
             busy = Task.objects.filter(
                 run_id=run.pk,
                 kind=TASK_FETCH,
-                status=TASK_LEASED,
+                status__in=(TASK_LEASED, TASK_RETRY_WAIT) if proxy else (TASK_LEASED,),
             ).exclude(pk=task.pk).count()
             if busy >= limit:
                 task.published_at = None
@@ -263,11 +267,19 @@ def _fetch(task: Task, token: int) -> None:
             return bool(normalized and host_allowed(normalized, crawl.get('allowed_hosts'))
                         and (task.run.status == 'exploring' or rules_match(normalized, crawl.get('visit'))))
 
-    result = fetch_public_html(
+    fetch = fetch_public_html
+    proxy_params = {}
+    if revision_id := task.run.job_revision.proxy_profile_revision_public_id:
+        from .proxy_http import fetch_proxy_html
+
+        fetch = fetch_proxy_html
+        proxy_params = {'revision_id': revision_id, 'owner': task.run.user_public_id}
+    result = fetch(
         task.payload['url'],
         timeout_seconds=timeout,
         max_bytes=int(task.payload.get('byte_allowance') or limits['max_bytes']),
         url_allowed=url_allowed,
+        **proxy_params,
     )
     digest, relative = store_snapshot_bytes(result['body'])
     charset = result.get('charset') or ''
@@ -443,7 +455,7 @@ def _fail(task: Task, token: int, code: str, message: str, *, retryable: bool) -
             )
         elif retryable and locked.attempt_count < MAX_ATTEMPTS:
             locked.status = TASK_RETRY_WAIT
-            delay = 2 * locked.attempt_count
+            delay = PROXY_RETRY_DELAYS[locked.attempt_count - 1] if code == 'proxy_unavailable' else 2 * locked.attempt_count
             locked.next_retry_at = timezone.now() if inline_runner() else timezone.now() + timedelta(seconds=delay)
             locked.published_at = None
             locked.lease_until = None
@@ -452,6 +464,12 @@ def _fail(task: Task, token: int, code: str, message: str, *, retryable: bool) -
         else:
             locked.status = TASK_FAILED
             locked.lease_until = None
+            if locked.kind == TASK_FETCH and code in PROXY_FAILURES:
+                from .crawl_budget import stop_fetches
+
+                run.stop_reason = code
+                run.save(update_fields=['stop_reason'])
+                stop_fetches(run, code)
         locked.save()
         Attempt.objects.filter(task=locked, fencing_token=token).update(
             status=locked.status,
