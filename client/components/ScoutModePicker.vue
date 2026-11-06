@@ -32,7 +32,7 @@ const modes = [
         <span class="scout-mode__description">{{
           t(`scout.workspace.modes.${item.id}.description`)
         }}</span>
-        <span v-if="item.id !== 'manual'" class="scout-availability">{{
+        <span v-if="item.id === 'ai'" class="scout-availability">{{
           t('scout.workspace.notAvailable')
         }}</span>
       </span>

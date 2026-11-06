@@ -1,4 +1,117 @@
 .scout-workflow {
+  .scout-workspace.scout-workspace--visual {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .scout-workspace--visual > .scout-sidebar {
+    display: none;
+  }
+  .scout-visual-source {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .scout-visual-source input {
+    flex: 1 1 15rem;
+    min-width: 0;
+  }
+  .scout-visual-source button {
+    flex-shrink: 0;
+  }
+  .scout-visual-status {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
+  .scout-visual-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 1fr);
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+  }
+  .scout-visual-document,
+  .scout-visual-rules {
+    min-width: 0;
+  }
+  .scout-snapshot-frame {
+    position: relative;
+    height: 38rem;
+    overflow: hidden;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-surface);
+  }
+  .scout-snapshot-frame iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+  .scout-snapshot-highlights {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .scout-snapshot-highlights rect {
+    fill: var(--ui-warning-soft);
+    stroke: var(--ui-warning);
+    stroke-width: 2px;
+  }
+  .scout-visual-targets,
+  .scout-visual-ancestors {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-block: 0.75rem;
+  }
+  .scout-visual-ancestors > span {
+    flex-basis: 100%;
+  }
+  .scout-visual-targets [aria-pressed='true'],
+  .scout-visual-ancestors [aria-pressed='true'] {
+    border-color: var(--ui-accent);
+    color: var(--ui-accent);
+  }
+  .scout-visual-check {
+    margin-top: 1rem;
+    padding: 1rem;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    overflow-wrap: anywhere;
+  }
+  .scout-visual-samples {
+    max-height: 14rem;
+    overflow: auto;
+    padding-inline-start: 1.5rem;
+  }
+  .scout-visual-fields {
+    list-style: none;
+    padding: 0;
+  }
+  .scout-visual-fields li {
+    display: grid;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--ui-border);
+    padding-block: 0.75rem;
+  }
+  .scout-visual-fields li > div {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  @media (max-width: 991.98px) {
+    .scout-visual-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .scout-snapshot-frame {
+      height: 26rem;
+    }
+    .scout-visual-source button {
+      flex: 1 1 auto;
+    }
+  }
   max-width: 1400px;
   padding-block: 1.5rem 3rem;
   color: var(--ui-text);

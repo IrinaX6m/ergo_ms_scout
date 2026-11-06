@@ -38,6 +38,7 @@ async function main() {
   })
   let page
   try {
+    await require('./visual-browser.cjs')(browser, output)
     page = await browser.newPage({ viewport: { width: 1440, height: 1100 } })
     const errors = []
     page.on('pageerror', (error) => errors.push(error.message))
@@ -238,7 +239,9 @@ async function main() {
     const seedAddresses = plan.getByText('https://events.example/b', { exact: true })
     assert.equal(await seedAddresses.count(), 1)
     assert.equal(
-      await ui.getByRole('button', { name: 'Подтвердить план и запустить', exact: true }).isEnabled(),
+      await ui
+        .getByRole('button', { name: 'Подтвердить план и запустить', exact: true })
+        .isEnabled(),
       true,
     )
     await checkWidths('confirm-multi-source')
@@ -260,7 +263,10 @@ async function main() {
     await page.waitForFunction(
       () => document.querySelector('.scout-workflow')?.getAttribute('aria-busy') === 'false',
     )
-    assert.equal(await ui.getByRole('button', { name: 'Новое задание', exact: true }).isEnabled(), true)
+    assert.equal(
+      await ui.getByRole('button', { name: 'Новое задание', exact: true }).isEnabled(),
+      true,
+    )
 
     assert.deepEqual(errors, [])
     console.log(
