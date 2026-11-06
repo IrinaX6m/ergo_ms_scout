@@ -6,7 +6,8 @@ import os
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Case, F, Q, When, Window
+from django.db.models.functions import RowNumber
 from django.utils import timezone
 
 from ..models import Attempt, Evidence, PageSnapshot, Record, Run, Task
@@ -39,6 +40,7 @@ from .runs import advance_run, _finish_if_idle
 from .snapshot_store import read_snapshot_bytes, store_snapshot_bytes
 
 logger = logging.getLogger('celery.module.scout.tasks')
+DISPATCH_INTERLEAVE_ROUNDS = 4
 EXTRACT_WRITE_BATCH_SIZE = 500
 
 
@@ -178,7 +180,25 @@ def _ready(run_public_id):
     )
     if run_public_id:
         queryset = queryset.filter(run__public_id=run_public_id)
-    return queryset.order_by('created_at')
+    # Начало пачки чередует загрузку и извлечение, остаток идёт по времени создания.
+    return queryset.annotate(
+        position_in_kind=Window(
+            expression=RowNumber(),
+            partition_by=F('kind'),
+            order_by=(F('created_at').asc(), F('pk').asc()),
+        ),
+    ).order_by(
+        Case(
+            When(
+                kind__in=(TASK_FETCH, TASK_EXTRACT),
+                position_in_kind__lte=DISPATCH_INTERLEAVE_ROUNDS,
+                then=F('position_in_kind'),
+            ),
+            default=DISPATCH_INTERLEAVE_ROUNDS + 1,
+        ),
+        'created_at',
+        'pk',
+    )
 
 
 def _claim(task_public_id: str, fencing_token: int):

@@ -13,12 +13,13 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from modules.scout.api.models import CrawlURL, Record, Run, Task
-from modules.scout.api.services.constants import RUN_COMPLETED, RUN_RUNNING, TASK_PENDING
+from modules.scout.api.services.constants import RUN_COMPLETED, RUN_RUNNING, TASK_CRAWL, TASK_EXTRACT, TASK_FETCH, TASK_PENDING
 from modules.scout.api.services.crawl_budget import reconcile
 from modules.scout.api.services.frontier import discover, remember
 from modules.scout.api.services.public_http import fetch_public_html
 from modules.scout.api.services.runs import approve_run, create_job, explore_job, pause_run, resume_run, start_run, _finish_if_idle
 from modules.scout.api.services.tasks_exec import publish_ready, recover_expired_leases
+from modules.scout.api.tasks import execute_scout_task
 
 FIELDS = [{'name': 'title', 'kind': 'css', 'selector': 'h1', 'scope': 'page', 'many': False}]
 
@@ -331,6 +332,39 @@ class CrawlTests(TestCase):
             row = rows[status]
             row.refresh_from_db()
             self.assertEqual((row.state, row.skip_reason), (state, reason))
+
+    def test_dispatch_interleaves_fetch_and_extract_and_fills_the_batch(self):
+        run = self._open('/quiet')
+        Task.objects.create(
+            run=run, kind=TASK_EXTRACT, status=TASK_PENDING, idempotency_key='extract:later',
+            next_retry_at=timezone.now() + timedelta(minutes=1),
+        )
+        Task.objects.create(
+            run=run, kind=TASK_EXTRACT, status=TASK_PENDING, idempotency_key='extract:published',
+            published_at=timezone.now(),
+        )
+
+        def tasks_of_kind(kind, count):
+            return Task.objects.bulk_create([
+                Task(run=run, kind=kind, status=TASK_PENDING, idempotency_key=f'{kind}:batch:{index}')
+                for index in range(count)
+            ])
+
+        fetches = tasks_of_kind(TASK_FETCH, 24)
+        extracts = tasks_of_kind(TASK_EXTRACT, 5)
+        crawls = tasks_of_kind(TASK_CRAWL, 2)
+
+        with patch.dict(os.environ, {'SCOUT_TASK_RUNNER': 'celery'}), patch.object(execute_scout_task, 'delay') as send:
+            publish_ready(str(run.public_id))
+            first_batch = [call.args[0] for call in send.call_args_list]
+            send.reset_mock()
+            publish_ready(str(run.public_id))
+            second_batch = [call.args[0] for call in send.call_args_list]
+
+        expected_first = [task for pair in zip(fetches[:4], extracts[:4]) for task in pair] + fetches[4:16]
+        expected_second = [fetches[16], extracts[4], *fetches[17:], *crawls]
+        self.assertEqual(first_batch, [str(task.public_id) for task in expected_first])
+        self.assertEqual(second_batch, [str(task.public_id) for task in expected_second])
 
     def test_http_503_retries_without_a_second_manual_start(self):
         job = create_job(
