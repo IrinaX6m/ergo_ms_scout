@@ -113,7 +113,7 @@ class RunDetailView(BaseAPIView):
     permission_classes = [IsAuthenticated, CanViewScout]
 
     def get(self, request, public_id):
-        runs = runs_for(request.user).select_related('job_revision__job')
+        runs = runs_for(request.user)
         if request.query_params.get('summary') == '1':
             run = get_object_or_404(runs, public_id=public_id)
             return Response(run_payload(run, summary=True))

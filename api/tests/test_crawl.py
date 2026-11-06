@@ -544,5 +544,8 @@ class AccessTests(TestCase):
         client = APIClient()
         client.force_authenticate(user=other)
         self.assertEqual(client.get(f'/api/scout/jobs/{job.public_id}/').status_code, 404)
-        self.assertEqual(client.get(f'/api/scout/runs/{run.public_id}/').status_code, 404)
-        self.assertEqual(client.post(f'/api/scout/runs/{run.public_id}/export/', {'kind': 'json'}).status_code, 403)
+        path = f'/api/scout/runs/{run.public_id}/'
+        self.assertEqual(client.get(path).status_code, 404)
+        self.assertEqual(client.get(path, {'summary': 1}).status_code, 404)
+        self.assertEqual(client.get(path + 'records/', {'limit': 1}).status_code, 404)
+        self.assertEqual(client.post(path + 'export/', {'kind': 'json'}).status_code, 403)
