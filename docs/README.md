@@ -15,6 +15,7 @@
 - [BACKLOG.md](../BACKLOG.md) — единственный список задач, владельцы и условия завершения.
 - [UX.md](UX.md) — сценарии и проверка взаимодействия; [DESIGN.md](DESIGN.md) — экраны и макеты.
 - [API_CONTRACT.md](API_CONTRACT.md) — текущий API и проектируемые расширения.
+- [SPEC_003.md](SPEC_003.md) — счётчики объёма и методика нагрузочного прогона.
 - [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) — факты о коде и ограничениях.
 - [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) — нерешённое.
 - [PARSER_ARCHITECTURE.md](PARSER_ARCHITECTURE.md) — устройство и технические предложения.
