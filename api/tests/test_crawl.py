@@ -7,11 +7,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from modules.scout.api.models import CrawlURL, Record, Task
+from modules.scout.api.models import CrawlURL, Record, Run, Task
 from modules.scout.api.services.constants import RUN_COMPLETED, RUN_RUNNING, TASK_PENDING
+from modules.scout.api.services.crawl_budget import reconcile
 from modules.scout.api.services.frontier import discover, remember
 from modules.scout.api.services.public_http import fetch_public_html
 from modules.scout.api.services.runs import approve_run, create_job, explore_job, pause_run, resume_run, start_run, _finish_if_idle
@@ -292,6 +295,42 @@ class CrawlTests(TestCase):
         run.refresh_from_db()
         self.assertEqual(task.status, TASK_PENDING)
         self.assertEqual(run.status, RUN_RUNNING)
+
+    def test_reconcile_reads_active_tasks_in_one_query(self):
+        run = self._open('/quiet')
+        snapshot = run.snapshots.get()
+        rows = {}
+        for status in ('missing', 'pending', 'leased', 'succeeded', 'failed', 'cancelled'):
+            rows[status] = CrawlURL.objects.create(
+                run=run, state='active', url_key=status, original_url=f'{self.origin}/{status}',
+            )
+            if status != 'missing':
+                Task.objects.create(
+                    run=run, kind='fetch', status=status, idempotency_key=f'fetch:{status}',
+                    payload={'url': snapshot.source_url}, error_code='fetch_error' if status == 'failed' else '',
+                )
+        other = Run.objects.create(job_revision=run.job_revision, user_public_id=run.user_public_id, status='cancelled')
+        Task.objects.create(run=other, kind='fetch', status='leased', idempotency_key='fetch:missing')
+
+        with (
+            patch('modules.scout.api.services.frontier.note_fetch') as note_fetch,
+            patch('modules.scout.api.services.frontier.release_queued') as release_queued,
+            CaptureQueriesContext(connection) as queries,
+        ):
+            reconcile(run)
+
+        task_reads = [entry for entry in queries if entry['sql'].lstrip().upper().startswith('SELECT ')
+                      and 'scout_task' in entry['sql']]
+        self.assertEqual(len(task_reads), 1)
+        note_fetch.assert_called_once_with(run, snapshot)
+        release_queued.assert_called_once_with(run)
+        for status, state, reason in (
+            ('missing', 'queued', ''), ('pending', 'active', ''), ('leased', 'active', ''),
+            ('failed', 'failed', 'fetch_error'), ('cancelled', 'skipped', 'cancelled'),
+        ):
+            row = rows[status]
+            row.refresh_from_db()
+            self.assertEqual((row.state, row.skip_reason), (state, reason))
 
     def test_http_503_retries_without_a_second_manual_start(self):
         job = create_job(

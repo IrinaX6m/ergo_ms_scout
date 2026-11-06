@@ -75,8 +75,15 @@ def reconcile(run) -> None:
         return
     from .frontier import note_fetch, release_queued
 
-    for row in CrawlURL.objects.filter(run=run, state='active'):
-        task = Task.objects.filter(run=run, idempotency_key=f'fetch:{row.url_key}').first()
+    active = {f'fetch:{row.url_key}': row for row in CrawlURL.objects.filter(run=run, state='active')}
+    tasks = {
+        task.idempotency_key: task
+        for task in Task.objects.filter(run=run, idempotency_key__in=active).only(
+            'idempotency_key', 'status', 'payload', 'error_code',
+        )
+    }
+    for key, row in active.items():
+        task = tasks.get(key)
         if task is None:
             row.state = 'queued'
             row.save(update_fields=['state'])
