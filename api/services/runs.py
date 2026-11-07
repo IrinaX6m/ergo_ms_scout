@@ -39,14 +39,14 @@ from .constants import (
     TASK_SITEMAP,
 )
 from .errors import ScoutError
-from .plan import normalize_plan, plan_hash
+from .plan import IDENTITY_UNSET, normalize_plan, plan_hash
 from .preview import page_type_preview, preview_urls
 from .proxy_profiles import PROXY_FAILURES, validate_revision
 
 
 def create_job(*, user_public_id, title: str, seed_urls, fields, record=None, crawl=None,
-               proxy_profile_revision_public_id=None) -> Job:
-    plan = normalize_plan(seed_urls, fields, record=record, crawl=crawl)
+               proxy_profile_revision_public_id=None, identity=IDENTITY_UNSET) -> Job:
+    plan = normalize_plan(seed_urls, fields, record=record, crawl=crawl, identity=identity)
     clean_title = _clean_title(title)
     with transaction.atomic():
         _bind_proxy(plan, proxy_profile_revision_public_id, user_public_id)
@@ -59,8 +59,8 @@ _KEEP_PROXY = object()
 
 
 def revise_job(*, job: Job, seed_urls, fields, record=None, title=None, crawl=None,
-               proxy_profile_revision_public_id=_KEEP_PROXY) -> JobRevision:
-    plan = normalize_plan(seed_urls, fields, record=record, crawl=crawl)
+               proxy_profile_revision_public_id=_KEEP_PROXY, identity=IDENTITY_UNSET) -> JobRevision:
+    plan = normalize_plan(seed_urls, fields, record=record, crawl=crawl, identity=identity)
     with transaction.atomic():
         locked_job = Job.objects.select_for_update().get(pk=job.pk)
         if Run.objects.filter(job_revision__job=locked_job, status__in=OCCUPYING_STATUSES).exists():
@@ -302,6 +302,7 @@ def _create_revision(job: Job, number: int, plan: dict) -> JobRevision:
         record=plan['record'] or {},
         limits=plan['limits'],
         crawl=plan['crawl'],
+        identity=plan.get('identity'),
         proxy_profile_revision_public_id=plan.get('proxy_profile_revision_public_id'),
         plan_hash=digest,
     )

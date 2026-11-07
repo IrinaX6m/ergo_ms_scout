@@ -26,6 +26,7 @@ class JobRevision(PublicIdMixin, models.Model):
     record = models.JSONField(default=dict, blank=True)
     limits = models.JSONField(default=dict)
     crawl = models.JSONField(default=dict, blank=True)
+    identity = models.JSONField(null=True, blank=True)
     proxy_profile_revision_public_id = models.UUIDField(null=True, blank=True)
     plan_hash = models.CharField(max_length=64)
     approved_plan_hash = models.CharField(max_length=64, blank=True, default='')
@@ -174,6 +175,9 @@ class Record(PublicIdMixin, models.Model):
         related_name='records',
     )
     identity_key = models.CharField(max_length=80)
+    entity_key = models.CharField(max_length=64, null=True, blank=True)
+    observation_index = models.PositiveIntegerField(null=True, blank=True)
+    identity_state = models.JSONField(null=True, blank=True)
     values = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -183,6 +187,11 @@ class Record(PublicIdMixin, models.Model):
             models.UniqueConstraint(
                 fields=['snapshot', 'schema_revision', 'rules_revision', 'identity_key'],
                 name='scout_record_identity',
+            ),
+            models.UniqueConstraint(
+                fields=['run', 'entity_key'],
+                condition=models.Q(entity_key__isnull=False),
+                name='scout_record_run_entity',
             ),
         ]
 
@@ -197,7 +206,18 @@ class Evidence(PublicIdMixin, models.Model):
     normalized_value = models.TextField(blank=True, default='')
     extractor_id = models.CharField(max_length=80)
     extractor_version = models.CharField(max_length=32)
+    observation_index = models.PositiveIntegerField(null=True, blank=True)
+    typed_value = models.JSONField(null=True, blank=True)
     extracted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['record', 'snapshot', 'observation_index', 'field_path', 'locator'],
+                condition=models.Q(observation_index__isnull=False),
+                name='scout_evidence_observation',
+            ),
+        ]
 
 
 class CrawlURL(PublicIdMixin, models.Model):

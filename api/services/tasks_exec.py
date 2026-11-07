@@ -35,6 +35,7 @@ from .constants import (
 )
 from .errors import FetchError, ScoutError
 from .html_extract import extract_html
+from .identity_records import store_identity_rows
 from .page_types import ambiguous_type_error, effective_fields, matching_page_types
 from .public_http import fetch_public_html, fetch_public_xml, public_url_allowed
 from .proxy_profiles import PROXY_FAILURES, PROXY_RETRY_DELAYS
@@ -348,12 +349,16 @@ def _extract(task: Task, token: int) -> None:
         content_type=snapshot.content_type,
         charset=snapshot.charset,
         require_match=has_types,
+        sku_field=revision.identity['field'] if revision.identity else None,
     )
     schema = revision.schema_revision
     rules = revision.rules_revision
 
     def write():
-        _store_extracted_rows(snapshot, schema, rules, rows)
+        if revision.identity:
+            store_identity_rows(snapshot, revision, schema, rules, rows)
+        else:
+            _store_extracted_rows(snapshot, schema, rules, rows)
         if has_types and not rows:
             append_event(task.run_id, 'Страница подходит под тип извлечения, но ни одна запись не найдена.')
         for line in describe_extract(

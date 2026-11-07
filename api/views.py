@@ -23,6 +23,7 @@ from .services.access import jobs_for, require_user_public_id, runs_for
 from .services.constants import RUN_AWAITING
 from .services.errors import ScoutError
 from .services.exporting import export_run
+from .services.plan import IDENTITY_UNSET
 from .services.preview import page_type_preview, preview_rows
 from .services.runs import (
     approve_run,
@@ -63,6 +64,7 @@ class JobListCreateView(BaseAPIView):
                 fields=request.data.get('fields') or [],
                 record=request.data.get('record'),
                 crawl=request.data.get('crawl'),
+                identity=request.data.get('identity', IDENTITY_UNSET),
                 proxy_profile_revision_public_id=request.data.get('proxy_profile_revision_public_id'),
             )
         except ScoutError as exc:
@@ -90,6 +92,7 @@ class JobDetailView(BaseAPIView):
                 record=request.data.get('record'),
                 title=request.data.get('title'),
                 crawl=request.data.get('crawl'),
+                identity=request.data.get('identity', IDENTITY_UNSET),
                 **({'proxy_profile_revision_public_id': request.data['proxy_profile_revision_public_id']}
                    if 'proxy_profile_revision_public_id' in request.data else {}),
             )

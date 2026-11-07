@@ -16,9 +16,11 @@ from .value_types import clean_conversion, typed_csv_columns
 
 _NAME = re.compile(r'^[a-z][a-z0-9_]{0,40}$')
 _KINDS = {'css', 'xpath'}
+_IDENTITY_NAMESPACE = re.compile(r'[a-z][a-z0-9_-]{0,63}')
+IDENTITY_UNSET = object()
 
 
-def normalize_plan(seed_urls, fields, limits=None, record=None, crawl=None) -> dict:
+def normalize_plan(seed_urls, fields, limits=None, record=None, crawl=None, *, identity=IDENTITY_UNSET) -> dict:
     urls = []
     seen = set()
     for raw in seed_urls or []:
@@ -108,7 +110,23 @@ def normalize_plan(seed_urls, fields, limits=None, record=None, crawl=None) -> d
         'fields': clean_fields,
         'limits': merged_limits,
         'crawl': clean_crawl,
+        **({'identity': _clean_identity(identity, clean_fields)} if identity is not IDENTITY_UNSET else {}),
     }
+
+
+def _clean_identity(raw, fields: list[dict]) -> dict:
+    if not isinstance(raw, dict):
+        raise ScoutError('invalid_identity', _('Ожидается объект настройки SKU'), path='/identity')
+    if raw.get('kind') != 'sku':
+        raise ScoutError('invalid_identity', _('Поддерживается идентичность по SKU'), path='/identity/kind')
+    namespace = raw.get('namespace')
+    if not isinstance(namespace, str) or not _IDENTITY_NAMESPACE.fullmatch(namespace):
+        raise ScoutError('invalid_identity', _('Укажите допустимое имя каталога'), path='/identity/namespace')
+    name = raw.get('field')
+    field = next((field for field in fields if field['name'] == name), None)
+    if not field or field['many'] or 'conversion' in field:
+        raise ScoutError('invalid_identity', _('Укажите одиночное текстовое поле SKU'), path='/identity/field')
+    return {'kind': 'sku', 'namespace': namespace, 'field': name}
 
 
 def _clean_crawl(crawl, seed_urls) -> dict:

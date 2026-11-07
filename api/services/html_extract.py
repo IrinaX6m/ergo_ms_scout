@@ -20,7 +20,7 @@ _HEADER_CHARSET = re.compile(r'charset\s*=\s*["\']?([A-Za-z0-9._-]+)', re.I)
 
 
 def extract_html(body: bytes, rules: list[dict], record=None, content_type: str = '', charset: str = '',
-                 *, require_match: bool = False) -> list[dict]:
+                 *, require_match: bool = False, sku_field: str | None = None) -> list[dict]:
     request = build_extract_request(rules)
     if request['protocol_version'] != PROTOCOL_VERSION:
         raise ScoutError('bad_contract', 'protocol')
@@ -36,17 +36,23 @@ def extract_html(body: bytes, rules: list[dict], record=None, content_type: str 
         page_rules = [rule for rule in rules if rule.get('scope') != 'record']
         record_rules = [rule for rule in rules if rule.get('scope') == 'record']
         targets = containers
-    shared = [_cell(root, rule, relative=False, require_match=require_match) for rule in page_rules]
+    actual_evidence = require_match or sku_field is not None
+    shared = [_cell(root, rule, relative=False, actual_evidence=actual_evidence, sku_field=sku_field)
+              for rule in page_rules]
     has_conversion = any('conversion' in rule for rule in rules)
     rows = []
     for index, node in enumerate(targets):
         values = {}
         evidence = []
-        for rule, cell in zip(page_rules, shared):
-            _put(values, evidence, rule, cell, index)
-        for rule in record_rules:
-            _put(values, evidence, rule, _cell(node, rule, relative=True, require_match=require_match), index)
+        relative_cells = [_cell(node, rule, relative=True, actual_evidence=actual_evidence, sku_field=sku_field)
+                          for rule in record_rules]
+        for rule, cell in zip(page_rules + record_rules, shared + relative_cells):
+            _put(values, evidence, rule, cell, index, typed_evidence=sku_field is not None)
         if require_match and not evidence:
+            continue
+        if sku_field is not None:
+            sku_match = next(cell['sku_match'] for cell in shared + relative_cells if 'sku_match' in cell)
+            rows.append({'observation_index': index, 'sku_match': sku_match, 'values': values, 'evidence': evidence})
             continue
         identity_values = legacy_values(values) if has_conversion else values
         identity = hashlib.sha256(
@@ -151,16 +157,35 @@ def _containers(root, record):
     return elements
 
 
-def _cell(node, rule: dict, *, relative: bool, require_match: bool) -> dict:
+def _cell(node, rule: dict, *, relative: bool, actual_evidence: bool, sku_field: str | None) -> dict:
     target = _isolate(node) if relative else node
-    matches = _nodes(target, rule, relative=relative)
-    cell = cell_from_matches(matches, many=rule.get('many'), conversion=rule.get('conversion'))
-    if require_match and not matches:
+    is_sku = rule['name'] == sku_field
+    found = _nodes(target, rule, relative=relative, raw_result=is_sku)
+    matches = _coerce(found) if is_sku else found
+    cell = cell_from_matches(
+        matches, many=rule.get('many'), conversion=rule.get('conversion'), collect_evidence=sku_field is not None,
+    )
+    if actual_evidence and not matches:
         cell['parts'] = []
+    if is_sku:
+        cell['sku_match'] = _sku_match(found, matches)
     return cell
 
 
-def cell_from_matches(matches, *, many, conversion=None) -> dict:
+def _sku_match(found, matches) -> tuple[str, str | None]:
+    if len(matches) > 1:
+        return 'ambiguous', None
+    if isinstance(found, (int, float, bool)):
+        return 'invalid', None
+    sku = _node_text(matches[0]).strip() if matches else ''
+    if not sku:
+        return 'missing', None
+    if len(sku) > 200:
+        return 'invalid', None
+    return 'resolved', sku
+
+
+def cell_from_matches(matches, *, many, conversion=None, collect_evidence=False) -> dict:
     texts = [_node_text(node) for node in matches]
     chosen = (texts if many else texts[:1]) or ['']
     raw_parts = [text[:FIELD_TEXT_LIMIT] for text in chosen]
@@ -169,14 +194,18 @@ def cell_from_matches(matches, *, many, conversion=None) -> dict:
     cell = {'raw': raw[:FIELD_TEXT_LIMIT], 'normalized': normalized[:FIELD_TEXT_LIMIT], 'parts': raw_parts}
     if conversion is not None:
         cell['typed'] = typed_cell(texts[0] if texts else None, conversion)
+    if collect_evidence:
+        cell['evidence_texts'] = texts
     return cell
 
 
-def _put(values, evidence, rule, cell, index: int) -> None:
+def _put(values, evidence, rule, cell, index: int, *, typed_evidence: bool) -> None:
     values[rule['name']] = {'raw': cell['raw'], 'normalized': cell['normalized']}
     if 'typed' in cell:
         values[rule['name']]['typed'] = cell['typed']
-    for part_index, part in enumerate(cell['parts']):
+    parts = cell['evidence_texts'] if typed_evidence else cell['parts']
+    for part_index, text in enumerate(parts):
+        part = text[:FIELD_TEXT_LIMIT]
         normalized = _SPACE.sub(' ', part).strip()
         evidence.append({
             'field_path': rule['name'],
@@ -185,6 +214,7 @@ def _put(values, evidence, rule, cell, index: int) -> None:
             'normalized_value': normalized,
             'extractor_id': EXTRACTOR_ID,
             'extractor_version': EXTRACTOR_VERSION,
+            **({'typed': typed_cell(text, rule['conversion'])} if typed_evidence and 'typed' in cell else {}),
         })
 
 
@@ -192,7 +222,7 @@ def _texts(root, rule: dict, *, relative: bool) -> list[str]:
     return [_node_text(node) for node in _nodes(root, rule, relative=relative)]
 
 
-def _nodes(root, rule: dict, *, relative: bool):
+def _nodes(root, rule: dict, *, relative: bool, raw_result: bool = False):
     kind = rule['kind']
     selector = rule['selector']
     try:
@@ -204,7 +234,7 @@ def _nodes(root, rule: dict, *, relative: bool):
         if isinstance(exc, ScoutError):
             raise
         raise ScoutError('selector', 'Селектор не применился') from exc
-    return _coerce(found)
+    return found if raw_result else _coerce(found)
 
 
 def _coerce(found) -> list:

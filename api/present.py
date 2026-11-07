@@ -4,6 +4,7 @@ from django.db.models import Count
 
 from .models import CrawlURL
 from .services.journal import journal_lines, stored_messages
+from .services.product_identity import public_identity
 from .services.value_types import legacy_values, missing_typed_fields
 
 
@@ -26,6 +27,7 @@ def revision_payload(revision) -> dict:
         'fields': revision.fields,
         'limits': revision.limits,
         'crawl': revision.crawl or {'mode': 'pages'},
+        **({'identity': revision.identity} if revision.identity else {}),
         'plan_hash': revision.plan_hash,
         **({'proxy_profile_revision_public_id': str(revision.proxy_profile_revision_public_id)}
            if revision.proxy_profile_revision_public_id else {}),
@@ -88,10 +90,15 @@ def records_with_evidence(records, *, typed: bool):
 
 
 def record_payload(record, *, typed: bool = False) -> dict:
-    missing = missing_typed_fields(record.values) if typed else set()
+    identity = record.identity_state
+    missing = missing_typed_fields(record.values) if typed and not identity else set()
+    evidence = record.evidence.all()
+    if identity:
+        evidence = sorted(evidence, key=lambda item: (item.source_url, item.snapshot_id, item.observation_index, item.pk))
     return {
         'public_id': str(record.public_id),
         'values': record.values if typed else legacy_values(record.values),
+        **({'identity': public_identity(record.entity_key, identity)} if identity else {}),
         'evidence': [
             {
                 'field_path': item.field_path,
@@ -102,8 +109,11 @@ def record_payload(record, *, typed: bool = False) -> dict:
                 'extractor_id': item.extractor_id,
                 'extractor_version': item.extractor_version,
                 **(_evidence_revision(item, record) if typed else {}),
+                **({'selected': item.snapshot_id == record.snapshot_id
+                   and item.observation_index == record.observation_index} if identity else {}),
+                **({'typed': item.typed_value} if typed and identity and item.typed_value is not None else {}),
             }
-            for item in record.evidence.all()
+            for item in evidence
             if item.field_path not in missing
         ],
     }
