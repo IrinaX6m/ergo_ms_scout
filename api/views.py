@@ -25,6 +25,7 @@ from .services.errors import ScoutError
 from .services.exporting import export_run
 from .services.plan import IDENTITY_UNSET
 from .services.preview import page_type_preview, preview_rows
+from .services.run_comparison import compare_runs
 from .services.runs import (
     approve_run,
     cancel_run,
@@ -238,6 +239,31 @@ class RunRecordsView(BaseAPIView):
             'records': [record_payload(item, typed=typed) for item in page[:limit]],
             'next_cursor': str(page[limit - 1].public_id) if len(page) > limit else None,
         })
+
+
+class RunComparisonView(BaseAPIView):
+    permission_classes = [IsAuthenticated, CanViewScout]
+
+    def get(self, request, public_id):
+        runs = runs_for(request.user)
+        target = get_object_or_404(runs, public_id=public_id)
+        query = request.query_params
+        try:
+            try:
+                base_id = UUID(query.get('base_run_public_id', ''))
+            except ValueError as exc:
+                raise ScoutError('invalid_comparison', _('Укажите UUID исходного запуска')) from exc
+            base = get_object_or_404(runs, public_id=base_id)
+            try:
+                limit = int(query.get('limit', '50'))
+            except ValueError:
+                limit = 0
+            if not 1 <= limit <= 200:
+                raise ScoutError('invalid_limit', _('Размер порции должен быть целым числом от 1 до 200.'))
+            result = compare_runs(base, target, field=query.get('field'), limit=limit, cursor=query.get('cursor'))
+        except ScoutError as exc:
+            return Response(error_payload(exc), status=error_status(exc))
+        return Response(result)
 
 
 class RunExportView(BaseAPIView):

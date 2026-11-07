@@ -8,6 +8,7 @@ from .views import (
     JobListCreateView,
     RunApproveView,
     RunCancelView,
+    RunComparisonView,
     RunDetailView,
     RunExportView,
     RunPauseView,
@@ -41,5 +42,6 @@ urlpatterns = [
     path('runs/<uuid:public_id>/resume/', RunResumeView.as_view(), name='scout-run-resume'),
     path('runs/<uuid:public_id>/cancel/', RunCancelView.as_view(), name='scout-run-cancel'),
     path('runs/<uuid:public_id>/records/', RunRecordsView.as_view(), name='scout-run-records'),
+    path('runs/<uuid:public_id>/compare/', RunComparisonView.as_view(), name='scout-run-comparison'),
     path('runs/<uuid:public_id>/export/', RunExportView.as_view(), name='scout-run-export'),
 ]
