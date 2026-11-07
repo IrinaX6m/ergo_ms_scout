@@ -36,6 +36,7 @@ def revision_payload(revision) -> dict:
 
 
 def run_payload(run, *, preview=None, page_type_preview=None, summary=False) -> dict:
+    from .services.sitemap_scan import scan_payload
     data = {
         'public_id': str(run.public_id),
         'status': run.status,
@@ -52,6 +53,8 @@ def run_payload(run, *, preview=None, page_type_preview=None, summary=False) -> 
         'stop_reason': run.stop_reason,
         'frontier': _frontier_counts(run),
     }
+    if (run.job_revision.crawl or {}).get('sitemap_url'):
+        data['sitemap'] = scan_payload(run)
     if summary:
         return data
     data.update(

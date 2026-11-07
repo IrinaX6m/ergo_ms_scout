@@ -257,7 +257,7 @@ class CrawlTests(TestCase):
 
     def test_bad_or_inaccessible_sitemap_fails_without_starting_site_fetches(self):
         cases = {'/missing.xml': 'http_404', '/invalid.xml': 'sitemap_invalid', '/entity.xml': 'sitemap_invalid',
-                 '/index.xml': 'sitemap_index_unsupported', '/empty.xml': 'sitemap_empty', '/out': 'redirect_scope'}
+                 '/index.xml': 'sitemap_empty', '/empty.xml': 'sitemap_empty', '/out': 'redirect_scope'}
         for path, code in cases.items():
             with self.subTest(code=code, path=path):
                 run = self._crawl('/quiet', sitemap_url=f'{self.origin}{path}')

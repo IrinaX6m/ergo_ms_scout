@@ -258,6 +258,12 @@ def _claim(task_public_id: str, fencing_token: int):
             if enforce_deadline(run):
                 advance_run(run)
                 return None
+            if Task.objects.filter(run=run, kind=TASK_SITEMAP, status=TASK_LEASED).exclude(pk=task.pk).exists():
+                task.published_at = None
+                task.save(update_fields=['published_at'])
+                return None
+            from .sitemap_scan import reserve_xml
+            reserve_xml(run, task)
         task.fencing_token += 1
         task.status = TASK_LEASED
         task.attempt_count += 1
@@ -446,16 +452,17 @@ def _crawl(task: Task, token: int) -> None:
 
 
 def _load_sitemap(task: Task, token: int) -> None:
-    from .frontier import open_site
-    from .sitemap import sitemap_urls
-    from .url_norm import host_allowed
+    from .sitemap import sitemap_document
+    from .sitemap_scan import finish_document, map_allowed
 
     run = task.run
     revision = run.job_revision
     crawl = revision.crawl
     remaining = crawl['max_seconds'] - (timezone.now() - run.started_at).total_seconds()
     timeout = max(1, min(int(revision.limits['timeout_seconds']), math.ceil(remaining)))
-    byte_limit = min(revision.limits['max_bytes'], crawl['max_total_bytes'])
+    byte_limit = task.payload.get('xml_allowance', 0)
+    if byte_limit <= 0:
+        raise FetchError('sitemap_budget', 'Исчерпан общий бюджет XML-карт', retryable=False)
     fetch = fetch_public_xml
     target_allowed = public_url_allowed
     proxy_params = {}
@@ -468,21 +475,15 @@ def _load_sitemap(task: Task, token: int) -> None:
     try:
         result = fetch(
             task.payload['url'], timeout_seconds=timeout, max_bytes=byte_limit,
-            url_allowed=lambda url: host_allowed(url, crawl['allowed_hosts']), **proxy_params,
+            url_allowed=lambda url: map_allowed(run, url), **proxy_params,
         )
     except FetchError as exc:
         raise FetchError(exc.code, f'Не удалось загрузить карту сайта. {exc}', retryable=exc.retryable) from exc
-    urls = []
-    for url in sitemap_urls(result['body']):
-        try:
-            target_allowed(url)
-        except FetchError:
-            continue
-        urls.append(url)
+    kind, urls = sitemap_document(result['body'])
 
     def write():
         fresh = Run.objects.get(pk=task.run_id)
-        open_site(fresh, sitemap_urls=urls)
+        finish_document(fresh, task, result, kind, urls, target_allowed)
         append_event(task.run_id, 'Карта сайта прочитана. Адреса проверены по правилам обхода.')
 
     _finish(task, token, write)
@@ -564,6 +565,9 @@ def _fail(task: Task, token: int, code: str, message: str, *, retryable: bool) -
         if locked.status == TASK_RETRY_WAIT:
             append_event(locked.run_id, 'Страница пока не записана, повторяем.')
         elif locked.status == TASK_FAILED:
+            if locked.kind == TASK_SITEMAP:
+                from .sitemap_scan import cancel_pending_maps
+                cancel_pending_maps(run)
             append_event(locked.run_id, f'Шаг {locked.kind} не выполнен: {text}')
             if locked.kind == TASK_FETCH:
                 from .frontier import mark_failed
