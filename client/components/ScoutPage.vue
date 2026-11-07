@@ -5,7 +5,7 @@ import FormCard from '@/components/FormCard.vue'
 import FormField from '@/components/FormField.vue'
 import SelectBox from '@/components/SelectBox.vue'
 import SpinnerLoading from '@/components/SpinnerLoading.vue'
-import StepRail from '@/components/StepRail.vue'
+import ScoutStepRail from './ScoutStepRail.vue'
 import { useThemeMode } from '@/composables/useThemeMode.js'
 import { useAppI18n } from '@/i18n/useAppI18n.js'
 import { applyThemeModePreference } from '@/js/theme-manager.js'
@@ -158,7 +158,7 @@ function openSystemSettings() {
         </button>
       </div>
     </header>
-    <StepRail
+    <ScoutStepRail
       :steps="steps"
       interactive
       :aria-label="t('scout.workspace.stepsLabel')"

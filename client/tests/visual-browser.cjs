@@ -60,7 +60,8 @@ module.exports = async function checkVisual(browser, output) {
 
     for (const theme of ['Тёмная', 'Светлая']) {
       await ui.getByRole('button', { name: 'Тема оформления', exact: true }).click()
-      await page.getByRole('link', { name: theme, exact: true }).click()
+      // Keep viewport checks independent of the dropdown's hover-close timer.
+      await page.getByRole('link', { name: theme, exact: true }).press('Enter')
       for (const width of [1440, 768, 360, 320]) {
         await page.setViewportSize({ width, height: 1100 })
         assert.ok(

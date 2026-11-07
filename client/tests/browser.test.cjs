@@ -157,7 +157,7 @@ async function main() {
 
     for (const theme of ['Тёмная', 'Светлая']) {
       await ui.getByRole('button', { name: 'Тема оформления', exact: true }).click()
-      await page.getByRole('link', { name: theme, exact: true }).click()
+      await page.getByRole('link', { name: theme, exact: true }).press('Enter')
       assert.equal(
         await page.locator('html').getAttribute('data-bs-theme'),
         theme === 'Тёмная' ? 'dark' : 'light',

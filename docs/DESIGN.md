@@ -10,7 +10,7 @@
 
 ## Что уже есть и что проектируется
 
-Интерфейс находится на `/scout`. `ScoutPage.vue` собирает шесть этапов; состояние и API вынесены в `client/js/useScoutWorkflow.js`, редактор правил — в `ScoutRuleEditor.vue`, выбор способа — в `ScoutModePicker.vue`, план — в `ScoutPlanSummary.vue`, таблица и происхождение — в `ScoutRecordsTable.vue`. Используются `StepRail`, `FormCard`, `FormField`, `SelectBox`, `ToggleSwitch` и `DataTable` ядра.
+Интерфейс находится на `/scout`. `ScoutPage.vue` собирает шесть этапов; состояние и API вынесены в `client/js/useScoutWorkflow.js`, редактор правил — в `ScoutRuleEditor.vue`, выбор способа — в `ScoutModePicker.vue`, план — в `ScoutPlanSummary.vue`, таблица и происхождение — в `ScoutRecordsTable.vue`. Навигация по этапам находится в локальном `ScoutStepRail.vue`; используются `FormCard`, `FormField`, `SelectBox`, `ToggleSwitch` и `DataTable` ядра. Локальная навигация убирает зависимость от отсутствующего в ядре `StepRail.vue`.
 
 Цвета берутся из `--ui-*` и `--color-*`; переключение светлой, тёмной и системной темы выполняет `theme-manager`. Отдельная палитра Scout не вводится. На узком экране боковое резюме скрывается, поля перестраиваются, таблица использует карточки ядра; шкала шагов прокручивается внутри своего контейнера. Подтверждение содержит полный план и остаётся доступным без бокового резюме.
 
