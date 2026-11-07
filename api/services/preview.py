@@ -84,7 +84,7 @@ def _preview_matched_page(page, rows, verified, snapshot, revision, page_type):
 
 def _snapshot_rows(snapshot, revision, fields, *, require_match=False):
     try:
-        body = read_snapshot_bytes(snapshot.content_path)
+        body = read_snapshot_bytes(snapshot.content_path, snapshot=snapshot)
     except (OSError, ValueError) as exc:
         raise ScoutError('snapshot', 'Снимок не прочитан') from exc
     return extract_html(
@@ -111,7 +111,7 @@ def _render_preview(observations, revision, *, typed):
             'evidence': [
                 _typed_evidence(item, snapshot, rules_public_id) for item in row['evidence']
                 if item['field_path'] not in missing
-            ] if typed else row['evidence'],
+            ] if typed else [{**item, 'html_availability': snapshot.html_availability} for item in row['evidence']],
         })
     return results
 
@@ -135,7 +135,8 @@ def _identity_preview(observations, revision, *, typed, rules_public_id):
         for position, (snapshot, row) in enumerate(group):
             state = merge_identity_state(state, row, grouped=key is not None, field_names=field_names)
             for item in row['evidence']:
-                source = {**item, 'source_url': snapshot.source_url, 'selected': position == 0}
+                source = {**item, 'source_url': snapshot.source_url, 'selected': position == 0,
+                          'html_availability': snapshot.html_availability}
                 if typed:
                     source = _typed_evidence(source, snapshot, rules_public_id)
                 else:
@@ -154,4 +155,5 @@ def _typed_evidence(item, snapshot, rules_public_id):
     return {
         **item, 'source_url': snapshot.source_url, 'snapshot_public_id': str(snapshot.public_id),
         'rules_revision_public_id': rules_public_id,
+        'html_availability': snapshot.html_availability,
     }

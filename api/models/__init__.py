@@ -115,6 +115,10 @@ class Run(PublicIdMixin, models.Model):
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     dispatch_requested_until = models.DateTimeField(null=True, blank=True)
+    results_availability = models.CharField(max_length=12, default='available')
+    retained_counts = models.JSONField(default=dict)
+    retention_hold = models.CharField(max_length=8, blank=True, default='')
+    retention_hold_version = models.PositiveIntegerField(default=1)
 
     class Meta:
         ordering = ['-created_at']
@@ -165,6 +169,8 @@ class PageSnapshot(PublicIdMixin, models.Model):
     content_type = models.CharField(max_length=120, blank=True, default='')
     charset = models.CharField(max_length=40, blank=True, default='', db_default='')
     has_crawl_links = models.BooleanField(null=True)
+    html_availability = models.CharField(max_length=12, default='available')
+    purged_at = models.DateTimeField(null=True)
     fetched_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -299,3 +305,76 @@ class ExportArtifact(PublicIdMixin, models.Model):
     kind = models.CharField(max_length=8)
     storage_path = models.CharField(max_length=300)
     created_at = models.DateTimeField(auto_now_add=True)
+    availability = models.CharField(max_length=12, default='available')
+    byte_size = models.PositiveBigIntegerField(null=True)
+
+
+class RetentionPolicy(models.Model):
+    user_public_id = models.UUIDField(unique=True)
+    version = models.PositiveIntegerField(default=1)
+    automatic_enabled = models.BooleanField(default=False)
+    html_days = models.PositiveIntegerField(default=30, null=True)
+    result_days = models.PositiveIntegerField(default=365, null=True)
+    export_days = models.PositiveIntegerField(default=7, null=True)
+    keep_latest_results = models.PositiveIntegerField(default=2)
+    last_automatic_date = models.DateField(null=True)
+
+
+class RetentionPreview(PublicIdMixin, models.Model):
+    user_public_id = models.UUIDField(db_index=True)
+    policy_version = models.PositiveIntegerField()
+    evaluated_at = models.DateTimeField()
+    expires_at = models.DateTimeField()
+    selection = models.JSONField()
+    manifest = models.JSONField()
+    manifest_hash = models.CharField(max_length=64)
+    summary = models.JSONField()
+
+
+class RetentionCleanup(PublicIdMixin, models.Model):
+    preview = models.OneToOneField(RetentionPreview, on_delete=models.CASCADE, related_name='cleanup')
+    user_public_id = models.UUIDField(db_index=True)
+    idempotency_key = models.UUIDField()
+    request_hash = models.CharField(max_length=64)
+    status = models.CharField(max_length=24, default='queued', db_index=True)
+    trigger = models.CharField(max_length=12, default='manual')
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=['user_public_id', 'idempotency_key'], name='scout_cleanup_request',
+        )]
+
+
+class RetentionCleanupItem(models.Model):
+    cleanup = models.ForeignKey(RetentionCleanup, on_delete=models.CASCADE, related_name='items')
+    number = models.PositiveIntegerField()
+    specification = models.JSONField()
+    status = models.CharField(max_length=12, default='pending')
+    reason = models.CharField(max_length=64, blank=True, default='')
+    deleted_bytes = models.PositiveBigIntegerField(default=0)
+    deleted_rows = models.PositiveIntegerField(default=0)
+    next_retry_at = models.DateTimeField(null=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['cleanup', 'number'], name='scout_cleanup_item')]
+        ordering = ['number']
+
+
+class RetentionLease(models.Model):
+    token = models.UUIDField(unique=True)
+    resource = models.CharField(max_length=100, db_index=True)
+    expires_at = models.DateTimeField()
+
+
+class RetentionHoldRequest(models.Model):
+    user_public_id = models.UUIDField()
+    key = models.UUIDField()
+    request_hash = models.CharField(max_length=64)
+    response = models.JSONField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=['user_public_id', 'key'], name='scout_hold_request',
+        )]

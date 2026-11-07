@@ -8,6 +8,11 @@ from src.core.utils.celery_beat import CeleryBeatModuleConfig
 class ScoutBeatConfig(CeleryBeatModuleConfig):
     def get_beat_schedule(self):
         return {
+            'scout-retention': {
+                'task': 'modules.scout.api.tasks.dispatch_retention',
+                'schedule': timedelta(seconds=30),
+                'options': {'queue': 'scout'},
+            },
             'scout-daily-schedules': {
                 'task': 'modules.scout.api.tasks.dispatch_daily_schedules',
                 'schedule': timedelta(seconds=30),

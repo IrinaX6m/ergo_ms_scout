@@ -106,6 +106,9 @@ def _diagnose(run: Run) -> list[str]:
             f'Страница скачана: HTTP {snapshot.http_status}, {snapshot.byte_size} байт.'
         )
         try:
+            if snapshot.html_availability != 'available':
+                lines.append('HTML снимка недоступен; метаданные и Evidence сохранены.')
+                continue
             body = read_snapshot_bytes(snapshot.content_path)
         except (OSError, ValueError):
             lines.append('Файл снимка не прочитан.')

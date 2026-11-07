@@ -19,6 +19,7 @@ from .services.errors import ScoutError
 from .services.plan_suggestions import SuggestionSelectorError, suggest_plan
 from .services.visual_rules import VisualDocument
 from .services.visual_snapshots import SNAPSHOT_TTL, create_snapshot, enqueue_snapshot, snapshot_status
+from .services.retention_locks import visual_response
 
 
 class _SnapshotCreateThrottle(UserRateThrottle):
@@ -45,6 +46,7 @@ class VisualSnapshotCreateView(BaseAPIView):
 class VisualSnapshotDetailView(BaseAPIView):
     permission_classes = [IsAuthenticated, CanConfigureScout]
 
+    @visual_response
     def get(self, request, public_id):
         snapshot = _get_snapshot(request.user, public_id)
         status, error = snapshot_status(snapshot)
@@ -60,6 +62,7 @@ class VisualSnapshotDetailView(BaseAPIView):
 class VisualSnapshotCheckView(BaseAPIView):
     permission_classes = [IsAuthenticated, CanConfigureScout]
 
+    @visual_response
     def post(self, request, public_id):
         snapshot = _get_snapshot(request.user, public_id)
         status, _ = snapshot_status(snapshot)
@@ -77,6 +80,7 @@ class VisualSnapshotCheckView(BaseAPIView):
 class PlanSuggestionView(BaseAPIView):
     permission_classes = [IsAuthenticated, CanConfigureScout]
 
+    @visual_response
     def post(self, request):
         try:
             data = _request_object(request.data)

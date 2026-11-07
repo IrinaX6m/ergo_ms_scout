@@ -2,6 +2,10 @@ from django.urls import path
 
 from .proxy_views import ProxyProfileCheckView, ProxyProfilesView, ProxyProfileView
 from .schedule_views import DailyScheduleView, ScheduleOccurrencesView
+from .retention_views import (
+    RetentionPolicyView, RunRetentionView, RetentionHoldView, RetentionPreviewsView,
+    RetentionPreviewItemsView, RetentionCleanupsView, RetentionCleanupView, RetentionCleanupItemsView,
+)
 from .views import (
     HealthView,
     JobDetailView,
@@ -25,6 +29,14 @@ from .visual_views import (
 )
 
 urlpatterns = [
+    path('retention/policy/', RetentionPolicyView.as_view()),
+    path('retention/previews/', RetentionPreviewsView.as_view()),
+    path('retention/previews/<uuid:public_id>/items/', RetentionPreviewItemsView.as_view()),
+    path('retention/cleanups/', RetentionCleanupsView.as_view()),
+    path('retention/cleanups/<uuid:public_id>/', RetentionCleanupView.as_view()),
+    path('retention/cleanups/<uuid:public_id>/items/', RetentionCleanupItemsView.as_view()),
+    path('runs/<uuid:public_id>/retention/', RunRetentionView.as_view()),
+    path('runs/<uuid:public_id>/retention/hold/', RetentionHoldView.as_view()),
     path('health/', HealthView.as_view(), name='scout-health'),
     path('proxy-profiles/', ProxyProfilesView.as_view(), name='scout-proxy-profiles'),
     path('proxy-profiles/<uuid:public_id>/', ProxyProfileView.as_view(), name='scout-proxy-profile'),

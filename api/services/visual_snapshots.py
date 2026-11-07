@@ -96,4 +96,12 @@ def snapshot_status(snapshot):
 
 
 def delete_expired_snapshots():
-    VisualSnapshot.objects.filter(created_at__lte=timezone.now() - SNAPSHOT_TTL).delete()
+    from .retention_locks import resource_lock
+    from ..models import RetentionLease
+
+    for row in VisualSnapshot.objects.filter(created_at__lte=timezone.now() - SNAPSHOT_TTL).iterator():
+        with resource_lock(f'visual:{row.pk}', wait=False) as acquired:
+            if acquired and not RetentionLease.objects.filter(
+                resource=f'visual:{row.pk}', expires_at__gt=timezone.now(),
+            ).exists():
+                row.delete()

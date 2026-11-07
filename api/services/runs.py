@@ -86,6 +86,7 @@ def explore_job(*, job: Job, user_public_id) -> Run:
 def explore_revision(*, revision: JobRevision, user_public_id) -> Run:
     with transaction.atomic():
         _lock_single_slot()
+        Job.objects.select_for_update().get(pk=revision.job_id)
         if Run.objects.filter(status__in=OCCUPYING_STATUSES).exists():
             raise ScoutError('slot_busy', _('Уже выполняется другой сбор'))
         validate_revision(revision.proxy_profile_revision_public_id, user_public_id, lock=True)

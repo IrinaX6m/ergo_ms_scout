@@ -1,5 +1,6 @@
 """Выдача задач, захват с fencing и выполнение одной попытки."""
 
+import hashlib
 import logging
 import math
 import os
@@ -296,7 +297,7 @@ def _fetch(task: Task, token: int) -> None:
         url_allowed=url_allowed,
         **proxy_params,
     )
-    digest, relative = store_snapshot_bytes(result['body'])
+    digest = hashlib.sha256(result['body']).hexdigest()
     charset = result.get('charset') or ''
     links_present = None
     if crawl.get('mode') == 'site':
@@ -305,6 +306,15 @@ def _fetch(task: Task, token: int) -> None:
         links_present = has_crawl_links(result['body'], result['content_type'], charset, result['final_url'])
 
     def write():
+        # Регистрация ссылки и запись байтов сериализованы с очисткой общего хеша.
+        from .retention_locks import resource_lock
+        with resource_lock('blob:' + digest):
+            from .retention import recover_pending_blob
+            recover_pending_blob(digest)
+            _digest, relative = store_snapshot_bytes(result['body'])
+            write_snapshot(relative)
+
+    def write_snapshot(relative):
         snapshot, _created = PageSnapshot.objects.get_or_create(
             run=task.run,
             source_url=task.payload['url'],
@@ -345,7 +355,7 @@ def _extract(task: Task, token: int) -> None:
             raise ambiguous_type_error(snapshot, matches)
         page_type, = matches
         fields = effective_fields(fields, page_type)
-    body = read_snapshot_bytes(snapshot.content_path)
+    body = read_snapshot_bytes(snapshot.content_path, snapshot=snapshot)
     rows = extract_html(
         body,
         fields,
@@ -425,7 +435,7 @@ def _crawl(task: Task, token: int) -> None:
         public_id=task.payload['snapshot_public_id'],
         run=task.run,
     )
-    body = read_snapshot_bytes(snapshot.content_path)
+    body = read_snapshot_bytes(snapshot.content_path, snapshot=snapshot)
 
     def write():
         from .frontier import discover

@@ -3,6 +3,7 @@
 import csv
 import json
 from pathlib import Path
+from uuid import uuid4
 from tempfile import TemporaryDirectory
 from textwrap import indent
 
@@ -16,18 +17,27 @@ from ..present import record_payload, records_with_evidence
 from .constants import RUN_COMPLETED, RUN_COMPLETED_WITH_ERRORS
 from .errors import ScoutError
 from .value_types import TYPED_VALUE_FORMAT, typed_csv_columns
+from .retention_locks import renew_read_leases
 
 EXPORT_BATCH_SIZE = 200
 
 
 def export_run(*, run, kind: str, typed: bool = False):
+    from .retention_locks import read_results
+
+    with read_results(run):
+        return _export_run(run=run, kind=kind, typed=typed)
+
+
+def _export_run(*, run, kind: str, typed: bool = False):
     if run.status not in (RUN_COMPLETED, RUN_COMPLETED_WITH_ERRORS):
         raise ScoutError('invalid_state', _('Выгрузка доступна после завершения сбора'))
     if kind not in ('json', 'csv'):
         raise ScoutError('invalid', _('Формат выгрузки: json или csv'))
     records = run.records.order_by('created_at', 'pk')
     filename = f'records.{kind}'
-    storage_dir = f'scout/exports/{run.public_id}'
+    artifact_id = uuid4()
+    storage_dir = f'scout/exports/{run.public_id}/{artifact_id}'
     if typed:
         storage_dir = f'{storage_dir}/{TYPED_VALUE_FORMAT}'
     storage_path = f'{storage_dir}/{filename}'
@@ -45,9 +55,11 @@ def export_run(*, run, kind: str, typed: bool = False):
                     else:
                         _write_csv(records, output)
             stored = get_media_client().commit_local(str(local_path), storage_path)
+            byte_size = local_path.stat().st_size
     except Exception as exc:
         raise ScoutError('media', _('Не удалось записать файл выгрузки')) from exc
-    artifact = ExportArtifact.objects.create(run=run, kind=kind, storage_path=stored)
+    artifact = ExportArtifact.objects.create(public_id=artifact_id, run=run, kind=kind,
+                                            storage_path=stored, byte_size=byte_size)
     url = get_signed_media_url(stored, as_attachment=True)
     return artifact, url, filename
 
@@ -56,6 +68,7 @@ def _write_json(records, output, *, typed: bool) -> None:
     output.write('[')
     separator = '\n'
     for record in records_with_evidence(records, typed=typed).iterator(chunk_size=EXPORT_BATCH_SIZE):
+        renew_read_leases()
         output.write(separator)
         output.write(indent(json.dumps(record_payload(record, typed=typed), ensure_ascii=False, indent=2), '  '))
         separator = ',\n'
@@ -65,10 +78,12 @@ def _write_json(records, output, *, typed: bool) -> None:
 def _write_csv(records, output) -> None:
     names = {}
     for values in records.values_list('values', flat=True).iterator(chunk_size=EXPORT_BATCH_SIZE):
+        renew_read_leases()
         names.update(dict.fromkeys(values or {}))
     writer = csv.DictWriter(output, fieldnames=['public_id', *names])
     writer.writeheader()
     for record in records.iterator(chunk_size=EXPORT_BATCH_SIZE):
+        renew_read_leases()
         row = {'public_id': str(record.public_id)}
         for name in names:
             cell = (record.values or {}).get(name) or {}
@@ -80,6 +95,7 @@ def _write_typed_csv(records, fields, output) -> None:
     writer = csv.DictWriter(output, fieldnames=typed_csv_columns(fields))
     writer.writeheader()
     for record in records.iterator(chunk_size=EXPORT_BATCH_SIZE):
+        renew_read_leases()
         row = {'public_id': str(record.public_id)}
         for field in fields:
             name = field['name']

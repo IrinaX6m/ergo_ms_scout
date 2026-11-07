@@ -26,6 +26,7 @@ from .services.exporting import export_run
 from .services.plan import IDENTITY_UNSET
 from .services.preview import page_type_preview, preview_rows
 from .services.run_comparison import compare_runs
+from .services.retention_locks import result_response
 from .services.runs import (
     approve_run,
     cancel_run,
@@ -204,6 +205,7 @@ class RunCancelView(BaseAPIView):
 class RunRecordsView(BaseAPIView):
     permission_classes = [IsAuthenticated, CanViewScout]
 
+    @result_response
     def get(self, request, public_id):
         run = get_object_or_404(runs_for(request.user), public_id=public_id)
         try:

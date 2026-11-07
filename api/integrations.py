@@ -20,10 +20,13 @@ def _health(**_kwargs):
 def _on_user_delete(*, user_public_id=None, **_kwargs):
     if not user_public_id:
         return
-    from .models import Job, ProxyProfile
+    from .models import Job, ProxyProfile, RetentionPolicy, RetentionPreview, RetentionHoldRequest
 
     Job.objects.filter(user_public_id=user_public_id).delete()
     ProxyProfile.objects.filter(user_public_id=user_public_id).delete()
+    RetentionPreview.objects.filter(user_public_id=user_public_id).delete()
+    RetentionPolicy.objects.filter(user_public_id=user_public_id).delete()
+    RetentionHoldRequest.objects.filter(user_public_id=user_public_id).delete()
 
 
 bridge.provide_many(
@@ -78,6 +81,15 @@ def audit_run(action: str, request, run, label: str) -> None:
 
 
 def error_status(exc: ScoutError) -> int:
+    if exc.code in ('run_data_expired', 'comparison_data_expired', 'snapshot_content_expired'):
+        return 410
+    if exc.code in (
+        'retention_policy_changed', 'retention_hold_changed', 'cleanup_in_progress', 'run_not_terminal',
+        'cleanup_preview_changed', 'cleanup_preview_expired', 'cleanup_preview_not_executable', 'idempotency_conflict',
+    ):
+        return 409
+    if exc.code == 'storage_unavailable':
+        return 503
     if exc.code in (
         'approval_required', 'slot_busy', 'plan_changed', 'invalid_state', 'page_type_preview_blocked',
         'comparison_not_ready', 'comparison_incompatible',
@@ -93,4 +105,5 @@ def error_payload(exc: ScoutError) -> dict:
     return {
         'code': exc.code, 'detail': str(exc) or _('Ошибка сбора'),
         **({'path': exc.path} if exc.path is not None else {}),
+        **getattr(exc, 'details', {}),
     }

@@ -259,7 +259,7 @@ def _spread(run: Run, row: CrawlURL) -> None:
         return
     from .snapshot_store import read_snapshot_bytes
     try:
-        body = read_snapshot_bytes(snapshot.content_path)
+        body = read_snapshot_bytes(snapshot.content_path, snapshot=snapshot)
     except (OSError, ValueError):
         return
     discover(run, snapshot, body)

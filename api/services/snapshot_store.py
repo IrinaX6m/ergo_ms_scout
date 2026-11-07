@@ -17,6 +17,22 @@ def snapshot_root() -> Path:
     return _ROOT
 
 
+def safe_snapshot_path(relative_path):
+    root = (CACHE_DIR / 'scout' / 'snapshots').absolute()
+    candidate = CACHE_DIR / relative_path
+    if Path(relative_path).is_absolute() or '..' in Path(relative_path).parts:
+        raise ValueError('invalid snapshot path')
+    resolved = candidate.resolve()
+    if root.resolve() not in resolved.parents:
+        raise ValueError('snapshot path escaped cache')
+    for path in (candidate, *candidate.parents):
+        if path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction()):
+            raise ValueError('snapshot path traverses a link')
+        if path == CACHE_DIR:
+            break
+    return resolved
+
+
 def store_snapshot_bytes(body: bytes) -> tuple[str, str]:
     digest = hashlib.sha256(body).hexdigest()
     relative = f'scout/snapshots/{digest}.html'
@@ -46,12 +62,21 @@ def store_snapshot_bytes(body: bytes) -> tuple[str, str]:
     return digest, relative
 
 
-def read_snapshot_bytes(relative_path: str, max_bytes: int = _READ_LIMIT) -> bytes:
-    root = (CACHE_DIR / 'scout' / 'snapshots').resolve()
-    path = (CACHE_DIR / relative_path).resolve()
-    if root not in path.parents and path != root:
-        raise ValueError('snapshot path escaped cache')
-    body = path.read_bytes()
+def read_snapshot_bytes(relative_path: str, max_bytes: int = _READ_LIMIT, *, snapshot=None) -> bytes:
+    from .retention_locks import resource_lock
+
+    path = safe_snapshot_path(relative_path)
+    with resource_lock('blob:' + path.stem, shared=True):
+        if snapshot is not None:
+            from ..models import PageSnapshot
+            from .errors import ScoutError
+            state = PageSnapshot.objects.get(pk=snapshot.pk).html_availability
+            if state in ('expired', 'purging'):
+                raise ScoutError('snapshot_content_expired', 'HTML снимка удалён по сроку хранения')
+        if not path.exists() and snapshot is not None:
+            from ..models import PageSnapshot
+            PageSnapshot.objects.filter(pk=snapshot.pk).update(html_availability='missing')
+        body = path.read_bytes()
     if body.startswith(b'\x1f\x8b'):
         return _gzip_limited(body, max_bytes)
     return body

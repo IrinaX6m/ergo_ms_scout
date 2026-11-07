@@ -15,6 +15,7 @@ from ..models import Evidence, Record
 from ..present import record_payload
 from .constants import RUN_COMPLETED, RUN_COMPLETED_WITH_ERRORS, TASK_FAILED
 from .errors import ScoutError
+from .retention_locks import renew_read_leases
 
 _COMPARE_STATUSES = (RUN_COMPLETED, RUN_COMPLETED_WITH_ERRORS)
 _CHANGE_STATUSES = ('changed', 'unchanged', 'uncertain', 'added', 'not_seen_before', 'not_seen', 'not_checked')
@@ -23,6 +24,13 @@ _ENTITY_KEY = re.compile(r'[a-f0-9]{64}')
 
 
 def compare_runs(base, target, *, field, limit, cursor) -> dict:
+    from .retention_locks import read_results
+
+    with read_results(base, target, comparison=True):
+        return _compare_runs(base, target, field=field, limit=limit, cursor=cursor)
+
+
+def _compare_runs(base, target, *, field, limit, cursor) -> dict:
     field_rule = _validate_pair(base, target, field)
     cursor_context = [str(base.public_id), str(target.public_id), field]
     after_key = _cursor_key(cursor, cursor_context)
@@ -31,6 +39,7 @@ def compare_runs(base, target, *, field, limit, cursor) -> dict:
     counts = dict.fromkeys(_CHANGE_STATUSES, 0)
     page = []
     for key, before, after in _keyed_pairs(base, target, field):
+        renew_read_leases()
         status = _change_status(before, after, field, field_rule, base_summary, target_summary)
         counts[status] += 1
         if status != 'unchanged' and (after_key is None or key > after_key) and len(page) <= limit:

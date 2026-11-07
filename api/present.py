@@ -46,7 +46,9 @@ def run_payload(run, *, preview=None, page_type_preview=None, summary=False) -> 
         'approved': bool(run.job_revision.approved_plan_hash)
         and run.job_revision.approved_plan_hash == run.job_revision.plan_hash,
         'snapshot_count': run.snapshots.count(),
-        'record_count': run.records.count(),
+        'record_count': (run.retained_counts.get('record_count', 0)
+                         if run.results_availability != 'available' else run.records.count()),
+        'results_availability': run.results_availability,
         'stop_reason': run.stop_reason,
         'frontier': _frontier_counts(run),
     }
@@ -86,7 +88,7 @@ def _frontier_counts(run) -> dict:
 def records_with_evidence(records, *, typed: bool):
     if typed:
         return records.select_related('rules_revision').prefetch_related('evidence__snapshot')
-    return records.prefetch_related('evidence')
+    return records.prefetch_related('evidence__snapshot')
 
 
 def record_payload(record, *, typed: bool = False) -> dict:
@@ -108,6 +110,7 @@ def record_payload(record, *, typed: bool = False) -> dict:
                 'normalized_value': item.normalized_value,
                 'extractor_id': item.extractor_id,
                 'extractor_version': item.extractor_version,
+                'html_availability': item.snapshot.html_availability,
                 **(_evidence_revision(item, record) if typed else {}),
                 **({'selected': item.snapshot_id == record.snapshot_id
                    and item.observation_index == record.observation_index} if identity else {}),

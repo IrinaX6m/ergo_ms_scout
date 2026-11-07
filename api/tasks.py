@@ -89,3 +89,18 @@ def clean_visual_snapshots():
     from .services.proxy_profiles import prune_proxy_credentials
 
     prune_proxy_credentials()
+
+
+@shared_task(name='modules.scout.api.tasks.execute_retention_cleanup')
+def execute_retention_cleanup(cleanup_public_id):
+    from .services.retention import process_cleanup
+
+    return {'changed': process_cleanup(str(cleanup_public_id))}
+
+
+@shared_task(name='modules.scout.api.tasks.dispatch_retention')
+def dispatch_retention():
+    from .services.retention import sweep_retention
+
+    sweep_retention()
+    return {'ok': True}
