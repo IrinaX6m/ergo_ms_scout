@@ -53,7 +53,7 @@ def run_payload(run, *, preview=None, page_type_preview=None, summary=False) -> 
         'stop_reason': run.stop_reason,
         'frontier': _frontier_counts(run),
     }
-    if (run.job_revision.crawl or {}).get('sitemap_url'):
+    if (run.job_revision.crawl or {}).get('sitemap_url') or (run.job_revision.crawl or {}).get('sitemap_from_robots'):
         data['sitemap'] = scan_payload(run)
     if summary:
         return data

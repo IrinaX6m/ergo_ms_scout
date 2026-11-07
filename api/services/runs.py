@@ -142,6 +142,13 @@ def start_run(*, run: Run) -> Run:
                 run=locked, kind=TASK_SITEMAP, status=TASK_PENDING,
                 idempotency_key='sitemap', payload={'url': sitemap}, fencing_token=1,
             )
+        elif crawl.get('sitemap_from_robots'):
+            from .robots import robots_url
+            Task.objects.create(
+                run=locked, kind=TASK_SITEMAP, status=TASK_PENDING,
+                idempotency_key='sitemap',
+                payload={'url': robots_url(revision.seed_urls[0]), 'source': 'robots', 'depth': -1}, fencing_token=1,
+            )
         elif crawl.get('mode') == 'site':
             from .frontier import open_site
             open_site(locked)
@@ -245,7 +252,7 @@ def _finish_if_idle(locked: Run) -> None:
         return
     failed_tasks = locked.tasks.filter(status=TASK_FAILED)
     failed = failed_tasks.exists()
-    if failed and (locked.job_revision.crawl or {}).get('sitemap_url') and failed_tasks.filter(kind=TASK_SITEMAP).exists():
+    if failed and failed_tasks.filter(kind=TASK_SITEMAP).exists():
         locked.status = RUN_FAILED
     elif locked.stop_reason in PROXY_FAILURES and not (locked.records.exists() or locked.crawl_urls.filter(state='done').exists()):
         locked.status = RUN_FAILED
@@ -293,6 +300,9 @@ def _bind_proxy(plan, revision_id, owner):
             proxy_target_allowed(url)
         if sitemap := crawl.get('sitemap_url'):
             proxy_target_allowed(sitemap)
+        if crawl.get('sitemap_from_robots'):
+            from .robots import robots_url
+            proxy_target_allowed(robots_url(plan['seed_urls'][0]))
         plan['proxy_profile_revision_public_id'] = str(revision_id)
 
 

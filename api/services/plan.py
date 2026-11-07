@@ -204,6 +204,13 @@ def _clean_crawl(crawl, seed_urls) -> dict:
             if not host_allowed(sitemap, hosts):
                 raise ScoutError('invalid', _('Адрес карты сайта выходит за пределы обхода'))
             result['sitemap_url'] = urldefrag(sitemap).url
+    robots = raw.get('sitemap_from_robots', False)
+    if not isinstance(robots, bool):
+        raise ScoutError('invalid', _('sitemap_from_robots должен быть логическим значением'))
+    if robots:
+        if mode != 'site' or result.get('sitemap_url'):
+            raise ScoutError('invalid', _('Поиск через robots.txt требует режима site без явного sitemap_url'))
+        result['sitemap_from_robots'] = True
     return result
 
 

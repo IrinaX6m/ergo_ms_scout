@@ -17,7 +17,8 @@ class Command(BaseCommand):
         parser.add_argument('--field', action='append', required=True)
         parser.add_argument('--record', default='')
         parser.add_argument('--crawl', default='pages', choices=('pages', 'site'))
-        parser.add_argument('--sitemap-url', default='', help='URL отдельной XML-карты сайта (для --crawl site).')
+        parser.add_argument('--sitemap-url', default='', help='URL XML-карты или индекса (для --crawl site).')
+        parser.add_argument('--sitemap-from-robots', action='store_true', help='Найти карты в /robots.txt первого --url (для --crawl site).')
         parser.add_argument('--allow-host', action='append', default=[])
         parser.add_argument('--visit-prefix', default='')
         parser.add_argument('--extract-prefix', default='')
@@ -72,6 +73,7 @@ def _crawl(options) -> dict:
         'mode': options['crawl'],
         'allowed_hosts': options['allow_host'],
         'sitemap_url': options.get('sitemap_url'),
+        'sitemap_from_robots': options.get('sitemap_from_robots', False),
         'visit': [{'kind': 'prefix', 'pattern': visit}] if visit else [],
         'extract_on': [{'kind': 'prefix', 'pattern': extract_on}] if extract_on else [],
         'max_depth': options['depth'],

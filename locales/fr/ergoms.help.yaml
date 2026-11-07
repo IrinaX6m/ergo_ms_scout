@@ -8,5 +8,6 @@ commands:
 notes:
   - "Parcours : --crawl site --allow-host example.com --visit-prefix /catalog --extract-prefix /catalog/item --depth 2 --max-pages 50"
   - "Plan de site ou index de plans pour le parcours : --crawl site --sitemap-url https://example.com/sitemap.xml"
+  - "Trouver les plans dans /robots.txt du premier --url : --crawl site --sitemap-from-robots ; sans --sitemap-url"
   - "Budget : --max-seconds 600 --max-total-bytes 20000000 --frontier-cap 200 --parallel-fetch 2 --fetch-delay-ms 0"
   - "Aperçu : --preview-url https://example.com/catalog/item/1 --preview-pages 3 ; le parcours complet commence après approve-run"

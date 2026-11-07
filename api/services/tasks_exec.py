@@ -39,7 +39,7 @@ from .html_extract import extract_html
 from .identity_records import store_identity_rows
 from .product_identity import identity_extract_options
 from .page_types import ambiguous_type_error, effective_fields, matching_page_types
-from .public_http import fetch_public_html, fetch_public_xml, public_url_allowed
+from .public_http import fetch_public_html, fetch_public_xml, fetch_public_text, public_url_allowed
 from .proxy_profiles import PROXY_FAILURES, PROXY_RETRY_DELAYS
 from .journal import append_event, describe_extract
 from .runs import advance_run, _finish_if_idle
@@ -455,8 +455,10 @@ def _crawl(task: Task, token: int) -> None:
 def _load_sitemap(task: Task, token: int) -> None:
     from .sitemap import sitemap_document
     from .sitemap_scan import finish_document, map_allowed
+    from .robots import robots_sitemaps
 
     run = task.run
+    is_robots = task.payload.get('source') == 'robots'
     revision = run.job_revision
     crawl = revision.crawl
     remaining = crawl['max_seconds'] - (timezone.now() - run.started_at).total_seconds()
@@ -464,13 +466,13 @@ def _load_sitemap(task: Task, token: int) -> None:
     byte_limit = task.payload.get('xml_allowance', 0)
     if byte_limit <= 0:
         raise FetchError('sitemap_budget', 'Исчерпан общий бюджет XML-карт', retryable=False)
-    fetch = fetch_public_xml
+    fetch = fetch_public_text if is_robots else fetch_public_xml
     target_allowed = public_url_allowed
     proxy_params = {}
     if revision_id := revision.proxy_profile_revision_public_id:
-        from .proxy_http import fetch_proxy_xml, proxy_target_allowed
+        from .proxy_http import fetch_proxy_xml, fetch_proxy_text, proxy_target_allowed
 
-        fetch = fetch_proxy_xml
+        fetch = fetch_proxy_text if is_robots else fetch_proxy_xml
         target_allowed = proxy_target_allowed
         proxy_params = {'revision_id': revision_id, 'owner': run.user_public_id}
     try:
@@ -479,13 +481,18 @@ def _load_sitemap(task: Task, token: int) -> None:
             url_allowed=lambda url: map_allowed(run, url), **proxy_params,
         )
     except FetchError as exc:
-        raise FetchError(exc.code, f'Не удалось загрузить карту сайта. {exc}', retryable=exc.retryable) from exc
-    kind, urls = sitemap_document(result['body'])
+        label = 'robots.txt' if is_robots else 'карту сайта'
+        raise FetchError(exc.code, f'Не удалось загрузить {label}. {exc}', retryable=exc.retryable) from exc
+    if is_robots:
+        kind, urls = 'index', robots_sitemaps(result['body'])
+    else:
+        kind, urls = sitemap_document(result['body'])
 
     def write():
         fresh = Run.objects.get(pk=task.run_id)
         finish_document(fresh, task, result, kind, urls, target_allowed)
-        append_event(task.run_id, 'Карта сайта прочитана. Адреса проверены по правилам обхода.')
+        append_event(task.run_id, 'robots.txt прочитан. Карты поставлены в очередь.' if is_robots
+                     else 'Карта сайта прочитана. Адреса проверены по правилам обхода.')
 
     _finish(task, token, write)
 

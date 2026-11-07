@@ -20,7 +20,7 @@ from urllib3.connection import HTTPSConnection
 from urllib3.connectionpool import HTTPSConnectionPool
 
 from .errors import FetchError
-from .http_fetch import fetch_html, fetch_xml
+from .http_fetch import fetch_html, fetch_xml, fetch_text
 from .proxy_profiles import ip_authority, load_proxy
 from .public_http import _public_address, public_url_allowed
 from .url_norm import canonical_host
@@ -216,6 +216,13 @@ def fetch_proxy_html(url, *, revision_id, owner, timeout_seconds, max_bytes, url
 def fetch_proxy_xml(url, *, revision_id, owner, timeout_seconds, max_bytes, url_allowed=None):
     return _fetch_proxy(
         fetch_xml, url, revision_id=revision_id, owner=owner, timeout_seconds=timeout_seconds,
+        max_bytes=max_bytes, url_allowed=url_allowed, same_origin=False,
+    )
+
+
+def fetch_proxy_text(url, *, revision_id, owner, timeout_seconds, max_bytes, url_allowed=None):
+    return _fetch_proxy(
+        fetch_text, url, revision_id=revision_id, owner=owner, timeout_seconds=timeout_seconds,
         max_bytes=max_bytes, url_allowed=url_allowed, same_origin=False,
     )
 

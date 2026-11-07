@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPHandler, HTTPSHandler, ProxyHandler
 
 from .errors import FetchError
-from .http_fetch import fetch_html, fetch_xml
+from .http_fetch import fetch_html, fetch_xml, fetch_text
 
 _IPV6_UNICAST = ipaddress.ip_network('2000::/3')
 
@@ -54,6 +54,12 @@ def fetch_public_html(url, *, timeout_seconds, max_bytes, url_allowed=None):
 def fetch_public_xml(url, *, timeout_seconds, max_bytes, url_allowed=None):
     return _fetch_public(
         fetch_xml, url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, url_allowed=url_allowed,
+    )
+
+
+def fetch_public_text(url, *, timeout_seconds, max_bytes, url_allowed=None):
+    return _fetch_public(
+        fetch_text, url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, url_allowed=url_allowed,
     )
 
 

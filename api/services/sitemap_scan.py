@@ -6,6 +6,7 @@ from ..models import Task
 from .constants import OPEN_TASK_STATUSES, TASK_SITEMAP, TASK_PENDING, TASK_RETRY_WAIT
 from .errors import FetchError, ScoutError
 from .public_http import public_url_allowed
+from .robots import MAX_ROBOTS_BYTES, robots_url
 from .url_norm import canonical_host, host_allowed, resolve_url, rules_match, url_key
 
 MAX_MAPS = 20
@@ -34,7 +35,8 @@ def _root(run):
 
 def _state(root):
     return root.payload.get(STATE_KEY) or {
-        'maps': [map_url(root.payload['url'])], 'aliases': [], 'urls': [],
+        'maps': [] if root.payload.get('source') == 'robots' else [map_url(root.payload['url'])],
+        'aliases': [], 'urls': [],
         'charged_bytes': 0, 'url_entries': 0, 'processed': 0, 'sealed': False, 'edges': {},
     }
 
@@ -55,6 +57,8 @@ def reserve_xml(run, task):
         allowance = 0
     else:
         allowance = min(run.job_revision.limits['max_bytes'], available)
+        if task.payload.get('source') == 'robots':
+            allowance = min(allowance, MAX_ROBOTS_BYTES)
         state['charged_bytes'] += allowance
     _save(root, state)
     # Корневая задача и состояние находятся в одной строке.
@@ -65,7 +69,9 @@ def reserve_xml(run, task):
 
 
 def map_allowed(run, url):
-    root_host = canonical_host(urlsplit(run.job_revision.crawl['sitemap_url']).hostname or '')
+    revision = run.job_revision
+    source = revision.crawl.get('sitemap_url') or robots_url(revision.seed_urls[0])
+    root_host = canonical_host(urlsplit(source).hostname or '')
     return (canonical_host(urlsplit(url).hostname or '') == root_host
             and host_allowed(url, run.job_revision.crawl['allowed_hosts']))
 
@@ -93,7 +99,10 @@ def finish_document(run, task, result, kind, urls, target_allowed):
         _open_if_ready(run, task, root, state)
         return
     state['aliases'].append(final)
-    state['processed'] += 1
+    if task.payload.get('source') == 'robots':
+        state['robots_processed'] = True
+    else:
+        state['processed'] += 1
     if kind == 'index':
         state['index'] = True
         lineage = list(dict.fromkeys([*ancestors, requested, final]))
@@ -183,7 +192,11 @@ def scan_payload(run):
     if root is None:
         return None
     state = _state(root)
-    return {'maps_discovered': len(state['maps']), 'maps_processed': state['processed'],
+    result = {'maps_discovered': len(state['maps']), 'maps_processed': state['processed'],
             'url_entries': state['url_entries'], 'xml_bytes_charged': state['charged_bytes'],
             'ready': state['sealed'], 'max_maps': MAX_MAPS, 'max_depth': MAX_DEPTH,
             'max_xml_bytes': min(MAX_XML_BYTES, run.job_revision.crawl['max_total_bytes'])}
+    if root.payload.get('source') == 'robots':
+        result.update(discovery='robots', robots_url=root.payload['url'],
+                      robots_processed=state.get('robots_processed', False), max_robots_bytes=MAX_ROBOTS_BYTES)
+    return result

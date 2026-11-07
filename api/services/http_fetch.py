@@ -57,6 +57,13 @@ def fetch_xml(url: str, *, timeout_seconds: int, max_bytes: int, url_allowed=Non
     )
 
 
+def fetch_text(url: str, *, timeout_seconds: int, max_bytes: int, url_allowed=None, handlers=()) -> dict:
+    return _fetch_response(
+        url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, url_allowed=url_allowed,
+        handlers=handlers, accept='text/plain',
+    )
+
+
 def _fetch_response(url, *, timeout_seconds, max_bytes, url_allowed, handlers, accept, media_types=()) -> dict:
     if url_allowed is not None and not url_allowed(url):
         raise FetchError('url_scope', _('Адрес выходит за пределы плана'), retryable=False)
