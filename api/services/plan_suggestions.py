@@ -88,6 +88,10 @@ def _sample_html(body: bytes, charset: str, max_bytes=_MAX_SAMPLE_BYTES) -> str:
 
 
 def _generate(prompt: str, *, system_prompt=None) -> object:
+    model = getattr(settings, 'SCOUT_AI_MODEL', os.environ.get('SCOUT_AI_MODEL', ''))
+    if not isinstance(model, str) or len(model) > 200 or any(ord(char) < 32 for char in model):
+        raise _model_unavailable()
+    model = model.strip()
     configured = getattr(settings, 'SCOUT_AI_TIMEOUT_SECONDS', os.environ.get('SCOUT_AI_TIMEOUT_SECONDS'))
     try:
         timeout = _TIMEOUT_SECONDS if configured is None else max(1, min(60, int(configured)))
@@ -105,10 +109,11 @@ def _generate(prompt: str, *, system_prompt=None) -> object:
                     {'role': 'system', 'content': system_prompt or _SYSTEM},
                     {'role': 'user', 'content': prompt},
                 ],
-                temperature=0, num_predict=4096,
+                temperature=0, num_predict=4096, skip_env_injection=bool(model),
                 config={
                     'request_timeout': timeout, 'max_retries': 0, 'keep_alive': '5m',
                     'provider_config': {'think': False},
+                    **({'model': model} if model else {}),
                 },
             )
         except Exception:

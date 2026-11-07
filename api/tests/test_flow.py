@@ -191,7 +191,7 @@ class FlowTests(TestCase):
         client.force_authenticate(user=self.user)
         return client, {'snapshot_public_id': str(snapshot.public_id), 'goal': '  Собери название, цену и остаток  '}
 
-    @override_settings(SCOUT_AI_ENABLED=True, SCOUT_AI_TIMEOUT_SECONDS=7)
+    @override_settings(SCOUT_AI_ENABLED=True, SCOUT_AI_TIMEOUT_SECONDS=7, SCOUT_AI_MODEL='qwen3.5:4b')
     def test_ai_draft_uses_ordinary_preview_and_collection(self):
         body = DATA001_FIXTURE + (
             b'<script>private-script</script><form>private-form</form>'
@@ -212,6 +212,8 @@ class FlowTests(TestCase):
             prompt = json.loads(model.call_args.kwargs['messages'][1]['content'])
             self.assertEqual(model.call_args.args, ('ollama_framework.chat',))
             self.assertEqual(model.call_args.kwargs['config']['request_timeout'], 7)
+            self.assertEqual(model.call_args.kwargs['config']['model'], 'qwen3.5:4b')
+            self.assertTrue(model.call_args.kwargs['skip_env_injection'])
             self.assertEqual(prompt['goal'], payload['goal'].strip())
             self.assertIn('class="price"', prompt['html'])
             self.assertIn('visible-link', prompt['html'])
@@ -283,7 +285,7 @@ class FlowTests(TestCase):
             self.assertEqual(response.data['code'], 'model_unavailable')
             model_bridge.call.assert_not_called()
 
-    @override_settings(SCOUT_AI_ENABLED=True)
+    @override_settings(SCOUT_AI_ENABLED=True, SCOUT_AI_TIMEOUT_SECONDS=None)
     def test_ai_timeout_keeps_provider_concurrency_bounded(self):
         client, payload = self._plan_suggestion_input()
         release = threading.Event()
