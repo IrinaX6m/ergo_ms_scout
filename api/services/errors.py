@@ -1,6 +1,7 @@
 class ScoutError(Exception):
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, *, path: str | None = None):
         self.code = code
+        self.path = path
         super().__init__(message)
 
 

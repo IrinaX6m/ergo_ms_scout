@@ -40,6 +40,7 @@ from .constants import (
 )
 from .errors import ScoutError
 from .plan import normalize_plan, plan_hash
+from .preview import page_type_preview, preview_urls
 from .proxy_profiles import PROXY_FAILURES, validate_revision
 
 
@@ -91,10 +92,7 @@ def explore_job(*, job: Job, user_public_id) -> Run:
             status=RUN_EXPLORING,
             started_at=timezone.now(),
         )
-        urls = list(revision.seed_urls)
-        if (revision.crawl or {}).get('mode') == 'site':
-            urls = (revision.crawl.get('preview_urls') or urls)[:int(revision.crawl.get('preview_pages') or 3)]
-        for url in urls:
+        for url in preview_urls(revision):
             Task.objects.create(
                 run=run,
                 kind=TASK_FETCH,
@@ -114,6 +112,7 @@ def approve_run(*, run: Run, user_public_id) -> Run:
         revision = JobRevision.objects.select_for_update().get(pk=locked.job_revision_id)
         if revision.approved_plan_hash and revision.approved_plan_hash != revision.plan_hash:
             raise ScoutError('plan_changed', _('План изменился, нужно новое подтверждение'))
+        _require_verified_page_types(locked)
         revision.approved_plan_hash = revision.plan_hash
         revision.approved_at = timezone.now()
         revision.approved_by_public_id = user_public_id
@@ -129,6 +128,7 @@ def start_run(*, run: Run) -> Run:
         revision = locked.job_revision
         if not revision.approved_plan_hash or revision.approved_plan_hash != revision.plan_hash:
             raise ScoutError('approval_required', _('Сбор без подтверждения этого плана запрещён'))
+        _require_verified_page_types(locked)
         locked.status = RUN_RUNNING
         locked.started_at = timezone.now()
         locked.save(update_fields=['status', 'started_at'])
@@ -145,6 +145,13 @@ def start_run(*, run: Run) -> Run:
             _ensure_extract_tasks(locked)
         _finish_if_idle(locked)
     return Run.objects.get(pk=run.pk)
+
+
+def _require_verified_page_types(run: Run) -> None:
+    if (run.job_revision.crawl or {}).get('page_types'):
+        _rows, diagnostics = page_type_preview(run)
+        if not diagnostics['can_approve']:
+            raise ScoutError('page_type_preview_blocked', _('Исправьте ошибки и проверьте все извлекающие типы страниц'))
 
 
 def pause_run(*, run: Run) -> Run:
@@ -307,10 +314,13 @@ def _create_revision(job: Job, number: int, plan: dict) -> JobRevision:
         fields=schema_fields,
         content_hash=_sha(schema_fields),
     )
+    rules = plan['fields']
+    if page_types := plan['crawl'].get('page_types'):
+        rules = {'fields': rules, 'record': plan['record'], 'page_types': page_types}
     ExtractionRulesRevision.objects.create(
         job_revision=revision,
-        rules=plan['fields'],
-        content_hash=_sha(plan['fields']),
+        rules=rules,
+        content_hash=_sha(rules),
     )
     return revision
 

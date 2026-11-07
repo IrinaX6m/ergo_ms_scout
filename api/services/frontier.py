@@ -23,6 +23,7 @@ from .constants import (
     TASK_RETRY_WAIT,
 )
 from .page_links import iter_hrefs
+from .page_types import matching_page_types
 from .proxy_profiles import PROXY_FAILURES
 from .url_norm import host_allowed, resolve_url, rules_match, url_key
 
@@ -435,8 +436,11 @@ def _schedule_crawl(run: Run, snapshot: PageSnapshot) -> None:
 
 
 def _schedule_extract(run: Run, snapshot: PageSnapshot, crawl: dict) -> None:
-    target = snapshot.final_url or snapshot.source_url
-    if not rules_match(target, crawl.get('extract_on')):
+    if crawl.get('page_types'):
+        matches = matching_page_types(snapshot, crawl)
+        if not matches or (len(matches) == 1 and matches[0]['action'] == 'discover'):
+            return
+    elif not rules_match(snapshot.final_url or snapshot.source_url, crawl.get('extract_on')):
         return
     revision = run.job_revision
     key = f'extract:{snapshot.public_id}:{revision.schema_revision.public_id}:{revision.rules_revision.public_id}'

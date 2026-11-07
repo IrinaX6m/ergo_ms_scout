@@ -35,6 +35,7 @@ from .constants import (
 )
 from .errors import FetchError, ScoutError
 from .html_extract import extract_html
+from .page_types import ambiguous_type_error, effective_fields, matching_page_types
 from .public_http import fetch_public_html, fetch_public_xml, public_url_allowed
 from .proxy_profiles import PROXY_FAILURES, PROXY_RETRY_DELAYS
 from .journal import append_event, describe_extract
@@ -329,23 +330,35 @@ def _extract(task: Task, token: int) -> None:
         public_id=task.payload['snapshot_public_id'],
         run=task.run,
     )
-    body = read_snapshot_bytes(snapshot.content_path)
     revision = task.run.job_revision
+    crawl = revision.crawl or {}
+    fields = revision.fields
+    has_types = bool(crawl.get('page_types'))
+    if has_types:
+        matches = matching_page_types(snapshot, crawl)
+        if len(matches) > 1:
+            raise ambiguous_type_error(snapshot, matches)
+        page_type, = matches
+        fields = effective_fields(fields, page_type)
+    body = read_snapshot_bytes(snapshot.content_path)
     rows = extract_html(
         body,
-        revision.fields,
+        fields,
         record=revision.record or None,
         content_type=snapshot.content_type,
         charset=snapshot.charset,
+        require_match=has_types,
     )
     schema = revision.schema_revision
     rules = revision.rules_revision
 
     def write():
         _store_extracted_rows(snapshot, schema, rules, rows)
+        if has_types and not rows:
+            append_event(task.run_id, 'Страница подходит под тип извлечения, но ни одна запись не найдена.')
         for line in describe_extract(
             body,
-            revision.fields,
+            fields,
             len(rows),
             status=task.run.status,
             approved=True,

@@ -29,7 +29,7 @@ def append_event(run_id, message: str) -> None:
 
 
 def journal_lines(run: Run) -> list[str]:
-    if run.snapshots.exists():
+    if not (run.job_revision.crawl or {}).get('page_types') and run.snapshots.exists():
         return _diagnose(run)
     stored = stored_messages(run)
     if stored:

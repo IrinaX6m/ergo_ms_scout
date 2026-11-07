@@ -19,7 +19,8 @@ _CHARSET = re.compile(br'charset\s*=\s*["\']?([A-Za-z0-9._-]+)', re.I)
 _HEADER_CHARSET = re.compile(r'charset\s*=\s*["\']?([A-Za-z0-9._-]+)', re.I)
 
 
-def extract_html(body: bytes, rules: list[dict], record=None, content_type: str = '', charset: str = '') -> list[dict]:
+def extract_html(body: bytes, rules: list[dict], record=None, content_type: str = '', charset: str = '',
+                 *, require_match: bool = False) -> list[dict]:
     request = build_extract_request(rules)
     if request['protocol_version'] != PROTOCOL_VERSION:
         raise ScoutError('bad_contract', 'protocol')
@@ -35,7 +36,7 @@ def extract_html(body: bytes, rules: list[dict], record=None, content_type: str 
         page_rules = [rule for rule in rules if rule.get('scope') != 'record']
         record_rules = [rule for rule in rules if rule.get('scope') == 'record']
         targets = containers
-    shared = [_cell(root, rule, relative=False) for rule in page_rules]
+    shared = [_cell(root, rule, relative=False, require_match=require_match) for rule in page_rules]
     has_conversion = any('conversion' in rule for rule in rules)
     rows = []
     for index, node in enumerate(targets):
@@ -44,7 +45,9 @@ def extract_html(body: bytes, rules: list[dict], record=None, content_type: str 
         for rule, cell in zip(page_rules, shared):
             _put(values, evidence, rule, cell, index)
         for rule in record_rules:
-            _put(values, evidence, rule, _cell(node, rule, relative=True), index)
+            _put(values, evidence, rule, _cell(node, rule, relative=True, require_match=require_match), index)
+        if require_match and not evidence:
+            continue
         identity_values = legacy_values(values) if has_conversion else values
         identity = hashlib.sha256(
             json.dumps({'index': index, 'values': identity_values}, ensure_ascii=False, sort_keys=True).encode('utf-8')
@@ -148,9 +151,13 @@ def _containers(root, record):
     return elements
 
 
-def _cell(node, rule: dict, *, relative: bool) -> dict:
+def _cell(node, rule: dict, *, relative: bool, require_match: bool) -> dict:
     target = _isolate(node) if relative else node
-    return cell_from_matches(_nodes(target, rule, relative=relative), many=rule.get('many'), conversion=rule.get('conversion'))
+    matches = _nodes(target, rule, relative=relative)
+    cell = cell_from_matches(matches, many=rule.get('many'), conversion=rule.get('conversion'))
+    if require_match and not matches:
+        cell['parts'] = []
+    return cell
 
 
 def cell_from_matches(matches, *, many, conversion=None) -> dict:

@@ -33,7 +33,7 @@ def revision_payload(revision) -> dict:
     }
 
 
-def run_payload(run, *, preview=None, summary=False) -> dict:
+def run_payload(run, *, preview=None, page_type_preview=None, summary=False) -> dict:
     data = {
         'public_id': str(run.public_id),
         'status': run.status,
@@ -66,6 +66,8 @@ def run_payload(run, *, preview=None, summary=False) -> dict:
     )
     if preview is not None:
         data['preview'] = preview
+    if page_type_preview is not None:
+        data['page_type_preview'] = page_type_preview
     return data
 
 

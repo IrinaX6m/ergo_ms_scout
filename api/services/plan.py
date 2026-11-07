@@ -99,6 +99,9 @@ def normalize_plan(seed_urls, fields, limits=None, record=None, crawl=None) -> d
         if len(columns) != len(set(columns)):
             raise ScoutError('invalid', _('Имена колонок типизированного CSV пересекаются'))
 
+    if isinstance(crawl, dict) and 'page_types' in crawl:
+        clean_crawl['page_types'] = _clean_page_types(crawl['page_types'], names)
+
     return {
         'seed_urls': urls,
         'record': clean_record,
@@ -116,6 +119,12 @@ def _clean_crawl(crawl, seed_urls) -> dict:
     mode = str(raw.get('mode') or 'pages')
     if mode not in ('pages', 'site'):
         raise ScoutError('invalid', _('Режим обхода: pages или site'))
+    if 'page_types' in raw:
+        if mode != 'site':
+            raise ScoutError('invalid_page_types', _('Типы страниц требуют режима обхода сайта'), path='/crawl/page_types')
+        if raw.get('extract_on'):
+            raise ScoutError('invalid_page_types', _('Используйте только типы страниц или фильтр извлечения'),
+                             path='/crawl/extract_on')
     hosts = []
     for item in raw.get('allowed_hosts') or []:
         text = str(item or '').strip()
@@ -172,6 +181,58 @@ def _clean_crawl(crawl, seed_urls) -> dict:
                 raise ScoutError('invalid', _('Адрес карты сайта выходит за пределы обхода'))
             result['sitemap_url'] = urldefrag(sitemap).url
     return result
+
+
+def _clean_page_types(raw, field_names: set[str]) -> list[dict]:
+    path = '/crawl/page_types'
+    if not isinstance(raw, list) or not 1 <= len(raw) <= 5:
+        raise ScoutError('invalid_page_types', _('Нужен список из одного–пяти типов страниц'), path=path)
+    result = []
+    ids = set()
+    for index, item in enumerate(raw):
+        entry = f'{path}/{index}'
+        if not isinstance(item, dict):
+            raise ScoutError('invalid_page_types', _('Тип страницы должен быть объектом'), path=entry)
+        type_id = item.get('id')
+        if not isinstance(type_id, str) or not _NAME.fullmatch(type_id) or type_id in ids:
+            raise ScoutError('invalid_page_types', _('Укажите уникальное имя типа страницы'), path=f'{entry}/id')
+        ids.add(type_id)
+        action = item.get('action')
+        if action not in ('discover', 'extract'):
+            raise ScoutError('invalid_page_types', _('Укажите обход ссылок или извлечение'), path=f'{entry}/action')
+        match = item.get('match')
+        if not isinstance(match, list) or not match:
+            raise ScoutError('invalid_page_types', _('Укажите хотя бы одно правило адреса'), path=f'{entry}/match')
+        rules = []
+        for rule_index, rule in enumerate(match):
+            kind = rule.get('kind') if isinstance(rule, dict) else None
+            pattern = rule.get('pattern') if isinstance(rule, dict) else None
+            if kind not in ('prefix', 'contains') or not isinstance(pattern, str) or not 1 <= len(pattern.strip()) <= 300:
+                raise ScoutError('invalid_page_types', _('Правило адреса задано неверно'), path=f'{entry}/match/{rule_index}')
+            rules.append({'kind': kind, 'pattern': pattern.strip()})
+        cleaned = {'id': type_id, 'action': action, 'match': rules}
+        if 'selectors' in item:
+            cleaned['selectors'] = _clean_type_selectors(item['selectors'], field_names, action, f'{entry}/selectors')
+        result.append(cleaned)
+    if not any(item['action'] == 'extract' for item in result):
+        raise ScoutError('invalid_page_types', _('Нужен хотя бы один тип для извлечения'), path=path)
+    return result
+
+
+def _clean_type_selectors(raw, field_names, action, path) -> dict:
+    if action != 'extract' or not isinstance(raw, dict):
+        raise ScoutError('invalid_page_types', _('Селекторы можно задать только для извлекающего типа'), path=path)
+    selectors = {}
+    for name, rule in raw.items():
+        pointer = f"{path}/{name.replace('~', '~0').replace('/', '~1')}"
+        if name not in field_names:
+            raise ScoutError('invalid_page_types', _('Поля нет в общей схеме'), path=pointer)
+        kind = rule.get('kind') if isinstance(rule, dict) else None
+        selector = rule.get('selector') if isinstance(rule, dict) else None
+        if kind not in ('css', 'xpath') or not isinstance(selector, str) or not 1 <= len(selector.strip()) <= 500:
+            raise ScoutError('invalid_page_types', _('Укажите вид и текст селектора'), path=pointer)
+        selectors[name] = {'kind': kind, 'selector': selector.strip()}
+    return selectors
 
 
 def _clean_rules(rules) -> list:

@@ -23,7 +23,7 @@ from .services.access import jobs_for, require_user_public_id, runs_for
 from .services.constants import RUN_AWAITING
 from .services.errors import ScoutError
 from .services.exporting import export_run
-from .services.preview import preview_rows
+from .services.preview import page_type_preview, preview_rows
 from .services.runs import (
     approve_run,
     cancel_run,
@@ -254,9 +254,13 @@ class RunExportView(BaseAPIView):
 
 def _run_body(run, *, typed: bool = False):
     preview = None
+    diagnostics = None
     if run.status == RUN_AWAITING:
         try:
-            preview = preview_rows(run, typed=typed)
+            if (run.job_revision.crawl or {}).get('page_types'):
+                preview, diagnostics = page_type_preview(run, typed=typed)
+            else:
+                preview = preview_rows(run, typed=typed)
         except ScoutError as exc:
             preview = {'error': error_payload(exc)}
-    return run_payload(run, preview=preview)
+    return run_payload(run, preview=preview, page_type_preview=diagnostics)

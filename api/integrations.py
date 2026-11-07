@@ -78,7 +78,7 @@ def audit_run(action: str, request, run, label: str) -> None:
 
 
 def error_status(exc: ScoutError) -> int:
-    if exc.code in ('approval_required', 'slot_busy', 'plan_changed', 'invalid_state'):
+    if exc.code in ('approval_required', 'slot_busy', 'plan_changed', 'invalid_state', 'page_type_preview_blocked'):
         return 409
     if exc.code == 'media':
         return 503
@@ -86,4 +86,7 @@ def error_status(exc: ScoutError) -> int:
 
 
 def error_payload(exc: ScoutError) -> dict:
-    return {'code': exc.code, 'detail': str(exc) or _('Ошибка сбора')}
+    return {
+        'code': exc.code, 'detail': str(exc) or _('Ошибка сбора'),
+        **({'path': exc.path} if exc.path is not None else {}),
+    }
