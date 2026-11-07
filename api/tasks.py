@@ -43,14 +43,18 @@ def _request_dispatch(run_id: str) -> None:
 @shared_task(name='modules.scout.api.tasks.execute_scout_task')
 def execute_scout_task(task_public_id: str, fencing_token: int) -> dict:
     changed = run_one(str(task_public_id), int(fencing_token))
-    if changed and not inline_runner():
+    if changed:
         run_id = (
             Task.objects.filter(public_id=task_public_id)
             .values_list('run__public_id', flat=True)
             .first()
         )
         if run_id:
-            _request_dispatch(str(run_id))
+            from .services.scheduled_runs import progress_scheduled_runs
+
+            progress_scheduled_runs(str(run_id))
+            if not inline_runner():
+                _request_dispatch(str(run_id))
     return {'changed': bool(changed)}
 
 
@@ -62,6 +66,15 @@ def dispatch_scout_pending(self, run_public_id: str = '') -> dict:
         return {'ok': True}
     publish_ready(run_public_id or None)
     logger.info('SCOUT сверил очередь запуска %s', run_public_id or '*')
+    return {'ok': True}
+
+
+@shared_task(name='modules.scout.api.tasks.dispatch_daily_schedules')
+def dispatch_daily_schedules():
+    from .services.scheduled_runs import sweep_schedules
+
+    sweep_schedules()
+    publish_ready()
     return {'ok': True}
 
 

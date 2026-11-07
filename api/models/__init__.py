@@ -43,6 +43,47 @@ class JobRevision(PublicIdMixin, models.Model):
         ordering = ['revision_number']
 
 
+class DailySchedule(PublicIdMixin, models.Model):
+    job = models.OneToOneField(Job, on_delete=models.CASCADE, related_name='daily_schedule')
+    version = models.PositiveIntegerField(default=1)
+
+
+class ScheduleRevision(models.Model):
+    schedule = models.ForeignKey(DailySchedule, on_delete=models.CASCADE, related_name='revisions')
+    number = models.PositiveIntegerField()
+    plan_revision = models.ForeignKey(JobRevision, on_delete=models.CASCADE)
+    plan_hash = models.CharField(max_length=64)
+    local_time = models.TimeField()
+    timezone = models.CharField(max_length=80)
+    enabled = models.BooleanField()
+    effective_from = models.DateTimeField()
+    effective_until = models.DateTimeField(null=True)
+    first_local_date = models.DateField(null=True)
+    next_local_date = models.DateField(null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['schedule', 'number'], name='scout_schedule_revision'),
+        ]
+
+
+class ScheduledOccurrence(PublicIdMixin, models.Model):
+    schedule = models.ForeignKey(DailySchedule, on_delete=models.CASCADE, related_name='occurrences')
+    revision = models.ForeignKey(ScheduleRevision, on_delete=models.CASCADE)
+    local_date = models.DateField()
+    scheduled_at = models.DateTimeField(null=True)
+    processed_at = models.DateTimeField()
+    status = models.CharField(max_length=32)
+    reason = models.CharField(max_length=64, blank=True, default='')
+    run = models.OneToOneField('Run', on_delete=models.CASCADE, null=True, related_name='scheduled_occurrence')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['schedule', 'local_date'], name='scout_schedule_day'),
+        ]
+        indexes = [models.Index(fields=['status'], name='scout_occurrence_status')]
+
+
 class ExtractionSchemaRevision(PublicIdMixin, models.Model):
     job_revision = models.OneToOneField(
         JobRevision,

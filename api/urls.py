@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .proxy_views import ProxyProfileCheckView, ProxyProfilesView, ProxyProfileView
+from .schedule_views import DailyScheduleView, ScheduleOccurrencesView
 from .views import (
     HealthView,
     JobDetailView,
@@ -35,6 +36,8 @@ urlpatterns = [
     path('jobs/', JobListCreateView.as_view(), name='scout-jobs'),
     path('jobs/<uuid:public_id>/', JobDetailView.as_view(), name='scout-job'),
     path('jobs/<uuid:public_id>/explore/', JobExploreView.as_view(), name='scout-job-explore'),
+    path('jobs/<uuid:public_id>/schedule/', DailyScheduleView.as_view(), name='scout-daily-schedule'),
+    path('jobs/<uuid:public_id>/schedule/occurrences/', ScheduleOccurrencesView.as_view(), name='scout-schedule-days'),
     path('runs/<uuid:public_id>/', RunDetailView.as_view(), name='scout-run'),
     path('runs/<uuid:public_id>/approve/', RunApproveView.as_view(), name='scout-run-approve'),
     path('runs/<uuid:public_id>/start/', RunStartView.as_view(), name='scout-run-start'),

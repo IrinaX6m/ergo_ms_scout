@@ -66,10 +66,14 @@ def schedule_publish(run_public_id) -> None:
 
 
 def publish_ready(run_public_id=None) -> None:
+    from .scheduled_runs import progress_scheduled_runs
+
     recover_expired_leases()
     _settle_idle_runs(run_public_id)
+    progress_scheduled_runs(run_public_id)
     if inline_runner():
         for _ in range(40):
+            progress_scheduled_runs(run_public_id)
             batch = list(_ready(run_public_id)[:20])
             if not batch:
                 return

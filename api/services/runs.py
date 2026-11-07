@@ -77,14 +77,17 @@ def revise_job(*, job: Job, seed_urls, fields, record=None, title=None, crawl=No
 
 
 def explore_job(*, job: Job, user_public_id) -> Run:
+    revision = _latest_revision(job)
+    if revision is None:
+        raise ScoutError('invalid', _('У задания нет плана'))
+    return explore_revision(revision=revision, user_public_id=user_public_id)
+
+
+def explore_revision(*, revision: JobRevision, user_public_id) -> Run:
     with transaction.atomic():
         _lock_single_slot()
-        busy = Run.objects.select_for_update().filter(status__in=OCCUPYING_STATUSES)
-        if busy.exists():
+        if Run.objects.filter(status__in=OCCUPYING_STATUSES).exists():
             raise ScoutError('slot_busy', _('Уже выполняется другой сбор'))
-        revision = _latest_revision(job)
-        if revision is None:
-            raise ScoutError('invalid', _('У задания нет плана'))
         validate_revision(revision.proxy_profile_revision_public_id, user_public_id, lock=True)
         run = Run.objects.create(
             job_revision=revision,

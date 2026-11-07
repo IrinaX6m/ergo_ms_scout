@@ -81,6 +81,7 @@ def error_status(exc: ScoutError) -> int:
     if exc.code in (
         'approval_required', 'slot_busy', 'plan_changed', 'invalid_state', 'page_type_preview_blocked',
         'comparison_not_ready', 'comparison_incompatible',
+        'schedule_exists', 'schedule_changed',
     ):
         return 409
     if exc.code == 'media':
