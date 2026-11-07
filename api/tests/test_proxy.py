@@ -102,7 +102,7 @@ class _Proxy(socketserver.StreamRequestHandler):
     def handle(self):
         request, headers = _request(self.rfile)
         self.server.requests.append((request, headers))
-        if self.server.reject or headers.get(b'proxy-authorization') != _AUTH:
+        if self.server.reject or headers.get(b'proxy-authorization') != self.server.auth:
             self.wfile.write(b'HTTP/1.1 407 denied ' + _AUTH + b'\r\nContent-Length: 0\r\n\r\n')
             return
         if getattr(self.server, 'slow_headers', False):
@@ -144,6 +144,7 @@ class ProxyTests(TestCase):
         self.proxy = self._server(_Proxy, _server_context(directory, 'proxy.test', ca, ca_key))
         self.proxy.origin = self.origin.server_address
         self.proxy.reject = False
+        self.proxy.auth = _AUTH
         self.port = self.proxy.server_address[1]
         self.enterContext(override_settings(
             SCOUT_PROXY_ENABLED=True,
@@ -170,11 +171,95 @@ class ProxyTests(TestCase):
         self.addCleanup(server.shutdown)
         return server
 
-    def _profile(self):
-        result = self.client.post(self.path, {'ip': '127.0.0.1', 'port': self.port,
-                                               'username': _LOGIN, 'password': _PASSWORD}, format='json', secure=True)
+    def _profile(self, anonymous=False):
+        data = {'ip': '127.0.0.1', 'port': self.port}
+        data.update({'auth_type': 'none'} if anonymous else {'username': _LOGIN, 'password': _PASSWORD})
+        result = self.client.post(self.path, data, format='json', secure=True)
         self.assertEqual(result.status_code, 201, result.data)
         return result.data
+
+    def test_anonymous_proxy_preview_collection_has_no_authorization_headers(self):
+        self.proxy.auth = None
+        profile = self._profile(anonymous=True)
+        self.assertEqual((profile['auth_type'], profile['credentials_configured']), ('none', False))
+        self.assertEqual(self.client.post(self.path + profile['public_id'] + '/check/', {}).data, {'status': 'ready'})
+        _, run = self._job(profile)
+        publish_ready(run['public_id'])
+        path = f"/api/scout/runs/{run['public_id']}/"
+        self.assertEqual(self.client.get(path).data['status'], 'awaiting_confirmation')
+        self.assertEqual(self.client.post(path + 'approve/', {}).status_code, 200)
+        self.assertEqual(self.client.post(path + 'start/', {}).status_code, 202)
+        publish_ready(run['public_id'])
+        db_run = Run.objects.get(public_id=run['public_id'])
+        self.assertEqual(db_run.status, 'completed')
+        self.assertEqual(db_run.records.count(), 2)
+        self.assertTrue(self.proxy.requests)
+        self.assertTrue(all(b'proxy-authorization' not in headers for _, headers in self.proxy.requests))
+        self.assertTrue(all(b'proxy-authorization' not in headers for _, headers in self.origin.requests))
+        connection = load_proxy(profile['revision_public_id'], self.user.public_id)
+        self.assertIsNone(connection.username)
+        self.assertIsNone(connection.password)
+
+    def test_auth_type_is_explicit_and_mixed_credentials_are_rejected(self):
+        endpoint = {'ip': '127.0.0.1', 'port': self.port}
+        for extra in ({}, {'auth_type': None}, {'auth_type': []}, {'auth_type': 'socks5'},
+                      {'auth_type': 'none', 'username': '', 'password': ''},
+                      {'auth_type': 'none', 'username': _LOGIN, 'password': _PASSWORD},
+                      {'auth_type': 'basic', 'username': '', 'password': ''},
+                      {'auth_type': 'none', 'password': None}):
+            with self.subTest(extra=extra):
+                response = self.client.post(self.path, {**endpoint, **extra}, format='json', secure=True)
+                self.assertEqual(response.status_code, 400, response.data)
+                self._assert_no_secret(response.data)
+        self.assertEqual(self._profile()['auth_type'], 'basic')
+
+    def test_anonymous_authentication_cannot_be_downgraded_or_forged_in_database(self):
+        for anonymous in (False, True):
+            with self.subTest(anonymous=anonymous):
+                profile = self._profile(anonymous)
+                revision = ProxyProfileRevision.objects.get(public_id=profile['revision_public_id'])
+                self.assertTrue(revision.ciphertext)
+                revision.auth_type = 'basic' if anonymous else 'none'
+                revision.save(update_fields=['auth_type'])
+                with self.assertRaises(FetchError) as corrupt:
+                    load_proxy(revision.public_id, self.user.public_id)
+                self.assertEqual(corrupt.exception.code, 'proxy_credentials_unavailable')
+
+    def test_anonymous_407_does_not_retry_or_fall_back_to_direct(self):
+        self.proxy.auth = None
+        profile = self._profile(True)
+        self.proxy.reject = True
+        _, run = self._job(profile)
+        publish_ready(run['public_id'])
+        db_run = Run.objects.get(public_id=run['public_id'])
+        self.assertEqual((db_run.status, db_run.stop_reason), ('failed', 'proxy_auth_failed'))
+        self.assertEqual(db_run.tasks.get().attempt_count, 1)
+        self.assertEqual(len(self.proxy.requests), 1)
+        self.assertNotIn(b'proxy-authorization', self.proxy.requests[0][1])
+        self.assertFalse(self.origin.requests)
+
+    def test_anonymous_profile_switching_pruning_rotation_revocation_and_https(self):
+        endpoint = {'ip': '127.0.0.1', 'port': self.port, 'auth_type': 'none'}
+        self.assertEqual(self.client.post(self.path, endpoint, format='json').data['code'], 'https_required')
+        profile = self._profile()
+        path = self.path + profile['public_id'] + '/'
+        anonymous = self.client.patch(path, endpoint, format='json', secure=True)
+        self.assertEqual(anonymous.status_code, 200, anonymous.data)
+        self.assertFalse(anonymous.data['credentials_configured'])
+        self.assertEqual(ProxyProfileRevision.objects.get(public_id=profile['revision_public_id']).ciphertext, '')
+        revision_id = anonymous.data['revision_public_id']
+        from django.conf import settings
+        new_key = Fernet.generate_key().decode()
+        with self.settings(SCOUT_PROXY_KEYS={**settings.SCOUT_PROXY_KEYS, 'rotated': new_key},
+                           SCOUT_PROXY_ACTIVE_KEY='rotated'):
+            call_command('scout_rotate_proxy_keys')
+            self.assertIsNone(load_proxy(revision_id, self.user.public_id).username)
+        with self.settings(SCOUT_PROXY_KEYS={}):
+            with self.assertRaises(FetchError):
+                load_proxy(revision_id, self.user.public_id)
+        self.assertEqual(self.client.delete(path).status_code, 204)
+        with self.assertRaises(FetchError):
+            load_proxy(revision_id, self.user.public_id)
 
     def _job(self, profile, url=_ORIGIN, allowed_hosts=None):
         response = self.client.post('/api/scout/jobs/', {

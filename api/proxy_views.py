@@ -35,7 +35,8 @@ def _payload(revision):
         'revision_public_id': str(revision.public_id),
         'ip': revision.ip,
         'port': revision.port,
-        'credentials_configured': bool(revision.ciphertext),
+        'auth_type': revision.auth_type,
+        'credentials_configured': revision.auth_type == 'basic' and bool(revision.ciphertext),
     }
 
 

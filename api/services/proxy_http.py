@@ -161,10 +161,13 @@ class _ProxyHTTPSHandler(HTTPSHandler):
             raise FetchError('url_blocked', 'Адрес сайта не разрешён', retryable=False)
         destination = _origin_ip(hostname, self.deadline)
         proxy = load_proxy(self.revision_id, self.owner)
-        credentials = base64.b64encode(f'{proxy.username}:{proxy.password}'.encode('ascii')).decode('ascii')
+        proxy_headers = {}
+        if proxy.username is not None:
+            credentials = base64.b64encode(f'{proxy.username}:{proxy.password}'.encode('ascii')).decode('ascii')
+            proxy_headers['Proxy-Authorization'] = f'Basic {credentials}'
         manager = urllib3.ProxyManager(
             f'https://{ip_authority(proxy.ip, proxy.port)}',
-            proxy_headers={'Proxy-Authorization': f'Basic {credentials}'},
+            proxy_headers=proxy_headers,
             proxy_ssl_context=ssl.create_default_context(),
             ssl_context=ssl.create_default_context(), server_hostname=hostname,
         )

@@ -204,6 +204,7 @@ class ProxyProfileRevision(PublicIdMixin, models.Model):
     profile = models.ForeignKey(ProxyProfile, on_delete=models.CASCADE, related_name='revisions')
     ip = models.GenericIPAddressField()
     port = models.PositiveIntegerField()
+    auth_type = models.CharField(max_length=5, choices=[('basic', 'Basic'), ('none', 'Без авторизации')], default='basic')
     key_id = models.CharField(max_length=80, editable=False)
     ciphertext = models.TextField(blank=True, editable=False)
 

@@ -29,8 +29,8 @@ class ProxyConnection:
     ip: str
     port: int
     tls_name: str
-    username: str = field(repr=False)
-    password: str = field(repr=False)
+    username: str | None = field(repr=False)
+    password: str | None = field(repr=False)
 
 
 def _mapping(name):
@@ -100,7 +100,11 @@ def _open_secret(revision):
         binding, username, password = json.loads(_cipher(revision.key_id).decrypt(revision.ciphertext.encode('ascii')))
     except (InvalidToken, ValueError, TypeError, UnicodeError):
         raise _unavailable() from None
-    if binding != _binding(revision) or not _valid_credentials(username, password):
+    credentials_valid = (
+        revision.auth_type == 'none' and username is None and password is None
+        or revision.auth_type == 'basic' and _valid_credentials(username, password)
+    )
+    if binding != _binding(revision) or not credentials_valid:
         raise _unavailable()
     return username, password
 
@@ -122,10 +126,16 @@ def _active_key_id():
 @sensitive_variables()
 def save_profile(owner, data, profile_id=None):
     _require_enabled()
-    if not isinstance(data, dict) or set(data) != {'ip', 'port', 'username', 'password'}:
-        raise ScoutError('invalid', 'Укажите IP, порт, логин и пароль прокси')
+    if not isinstance(data, dict):
+        raise ScoutError('invalid', 'Укажите параметры прокси')
+    auth_type = data.get('auth_type', 'basic')
+    if auth_type not in ('basic', 'none'):
+        raise ScoutError('invalid', 'Выберите basic или none для авторизации прокси')
+    required = {'ip', 'port'} | ({'username', 'password'} if auth_type == 'basic' else {'auth_type'})
+    if set(data) not in (required, required | {'auth_type'}):
+        raise ScoutError('invalid', 'Для basic укажите IP, порт, логин и пароль; для none — IP и порт без реквизитов')
     ip, port = data['ip'], data['port']
-    username, password = data['username'], data['password']
+    username, password = data.get('username'), data.get('password')
     if not isinstance(ip, str) or '%' in ip or type(port) is not int or not 1 <= port <= 65535:
         raise ScoutError('invalid', 'Проверьте IP и порт прокси')
     try:
@@ -136,7 +146,7 @@ def save_profile(owner, data, profile_id=None):
     except ValueError:
         raise ScoutError('invalid', 'Проверьте IP и порт прокси') from None
     endpoint_name(ip, port)
-    if not _valid_credentials(username, password):
+    if auth_type == 'basic' and not _valid_credentials(username, password):
         raise ScoutError('invalid', 'Проверьте формат логина и пароля прокси')
     key_id = _active_key_id()
     with transaction.atomic():
@@ -148,7 +158,7 @@ def save_profile(owner, data, profile_id=None):
             ).first()
             if profile is None:
                 raise ScoutError('proxy_blocked', 'Профиль прокси недоступен')
-        revision = ProxyProfileRevision(profile=profile, ip=ip, port=port)
+        revision = ProxyProfileRevision(profile=profile, ip=ip, port=port, auth_type=auth_type)
         _seal(revision, key_id, username, password)
         revision.save()
         _prune_profile(profile)
