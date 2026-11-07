@@ -4,7 +4,7 @@ from .constants import TASK_FETCH
 from .errors import ScoutError
 from .html_extract import extract_html
 from .page_types import ambiguous_type_error, effective_fields, matching_page_types
-from .product_identity import merge_identity_state, observation_rank, product_key, public_identity
+from .product_identity import merge_identity_state, observation_rank, product_key, public_identity, identity_extract_options
 from .snapshot_store import read_snapshot_bytes
 from .value_types import legacy_values, missing_typed_fields
 
@@ -94,7 +94,7 @@ def _snapshot_rows(snapshot, revision, fields, *, require_match=False):
         content_type=snapshot.content_type,
         charset=snapshot.charset,
         require_match=require_match,
-        sku_field=revision.identity['field'] if revision.identity else None,
+        **identity_extract_options(snapshot, revision),
     )
 
 
@@ -133,7 +133,8 @@ def _identity_preview(observations, revision, *, typed, rules_public_id):
         state = {}
         evidence = []
         for position, (snapshot, row) in enumerate(group):
-            state = merge_identity_state(state, row, grouped=key is not None, field_names=field_names)
+            state = merge_identity_state(state, row, grouped=key is not None, field_names=field_names,
+                                         profile=revision.identity)
             for item in row['evidence']:
                 source = {**item, 'source_url': snapshot.source_url, 'selected': position == 0,
                           'html_availability': snapshot.html_availability}

@@ -110,23 +110,29 @@ def normalize_plan(seed_urls, fields, limits=None, record=None, crawl=None, *, i
         'fields': clean_fields,
         'limits': merged_limits,
         'crawl': clean_crawl,
-        **({'identity': _clean_identity(identity, clean_fields)} if identity is not IDENTITY_UNSET else {}),
+        **({'identity': _clean_identity(identity, clean_fields, clean_record)} if identity is not IDENTITY_UNSET else {}),
     }
 
 
-def _clean_identity(raw, fields: list[dict]) -> dict:
+def _clean_identity(raw, fields: list[dict], record=None) -> dict:
     if not isinstance(raw, dict):
         raise ScoutError('invalid_identity', _('Ожидается объект настройки SKU'), path='/identity')
-    if raw.get('kind') != 'sku':
-        raise ScoutError('invalid_identity', _('Поддерживается идентичность по SKU'), path='/identity/kind')
+    kind = raw.get('kind')
+    if kind not in ('sku', 'field', 'url'):
+        raise ScoutError('invalid_identity', _('Ключ записи: sku, field или url'), path='/identity/kind')
     namespace = raw.get('namespace')
     if not isinstance(namespace, str) or not _IDENTITY_NAMESPACE.fullmatch(namespace):
         raise ScoutError('invalid_identity', _('Укажите допустимое имя каталога'), path='/identity/namespace')
+    if kind == 'url':
+        if record is not None or set(raw) != {'kind','namespace'}:
+            raise ScoutError('invalid_identity', _('Ключ URL требует одну запись на страницу и не принимает field'),
+                             path='/identity')
+        return {'kind':'url','namespace':namespace}
     name = raw.get('field')
     field = next((field for field in fields if field['name'] == name), None)
     if not field or field['many'] or 'conversion' in field:
         raise ScoutError('invalid_identity', _('Укажите одиночное текстовое поле SKU'), path='/identity/field')
-    return {'kind': 'sku', 'namespace': namespace, 'field': name}
+    return {'kind': kind, 'namespace': namespace, 'field': name}
 
 
 def _clean_crawl(crawl, seed_urls) -> dict:

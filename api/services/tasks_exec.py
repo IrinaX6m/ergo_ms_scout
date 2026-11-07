@@ -37,6 +37,7 @@ from .constants import (
 from .errors import FetchError, ScoutError
 from .html_extract import extract_html
 from .identity_records import store_identity_rows
+from .product_identity import identity_extract_options
 from .page_types import ambiguous_type_error, effective_fields, matching_page_types
 from .public_http import fetch_public_html, fetch_public_xml, public_url_allowed
 from .proxy_profiles import PROXY_FAILURES, PROXY_RETRY_DELAYS
@@ -369,7 +370,7 @@ def _extract(task: Task, token: int) -> None:
         content_type=snapshot.content_type,
         charset=snapshot.charset,
         require_match=has_types,
-        sku_field=revision.identity['field'] if revision.identity else None,
+        **identity_extract_options(snapshot, revision),
     )
     schema = revision.schema_revision
     rules = revision.rules_revision

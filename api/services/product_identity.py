@@ -1,9 +1,10 @@
-"""Ключ товара и правила выбора строки, общие для предпросмотра и сбора."""
+"""Явный ключ объекта и выбор строки, общие для предпросмотра и сбора."""
 
 import hashlib
 import json
+from urllib.parse import urlsplit, urlunsplit, unquote_plus
 
-from .url_norm import resolve_url
+from .url_norm import resolve_url, canonical_host
 
 
 def product_key(revision, row) -> str | None:
@@ -11,7 +12,7 @@ def product_key(revision, row) -> str | None:
     if status != 'resolved':
         return None
     profile = revision.identity
-    parts = ['sku-v1', str(revision.job.public_id), profile['namespace'], profile['field'], sku]
+    parts = [profile['kind']+'-v1', str(revision.job.public_id), profile['namespace'], profile.get('field','final_url'), sku]
     payload = json.dumps(parts, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
     return hashlib.sha256(payload).hexdigest()
 
@@ -28,7 +29,7 @@ def observation_rank(snapshot, index, drop_query) -> tuple:
     )
 
 
-def merge_identity_state(state, row, *, grouped: bool, field_names) -> dict:
+def merge_identity_state(state, row, *, grouped: bool, field_names, profile=None) -> dict:
     status, _sku = row['sku_match']
     reference = dict(state.get('reference', {}))
     conflicts = set(state.get('conflicting_fields', []))
@@ -49,8 +50,37 @@ def merge_identity_state(state, row, *, grouped: bool, field_names) -> dict:
         'status': status,
         'reference': reference,
         'conflicting_fields': [name for name in field_names if name in conflicts],
+        **({'kind':profile['kind'],'key_value':row['sku_match'][1]}
+           if profile and profile['kind']!='sku' else {}),
     }
 
 
 def public_identity(key, state) -> dict:
-    return {'entity_key': key, 'status': state['status'], 'conflicting_fields': state['conflicting_fields']}
+    return {'entity_key': key, 'status': state['status'], 'conflicting_fields': state['conflicting_fields'],
+            **({'kind':state['kind'],'key_value':state['key_value']} if 'kind' in state else {})}
+
+
+def identity_extract_options(snapshot, revision):
+    profile = revision.identity
+    if not profile:
+        return {}
+    if profile['kind'] != 'url':
+        return {'sku_field':profile['field']}
+    raw = snapshot.final_url or snapshot.source_url
+    try:
+        parts = urlsplit(raw)
+        host = canonical_host(parts.hostname or '')
+        if parts.scheme not in ('http','https') or not host or parts.username or parts.password:
+            raise ValueError
+        netloc = f'[{host}]' if ':' in host else host
+        if parts.port and parts.port != (443 if parts.scheme=='https' else 80):
+            netloc += f':{parts.port}'
+        drop = set((revision.crawl or {}).get('drop_query') or [])
+        query = '&'.join(piece for piece in parts.query.split('&')
+                         if unquote_plus(piece.split('=',1)[0]) not in drop)
+        normalized = urlunsplit((parts.scheme,netloc,parts.path or '/',query,''))
+        if len(normalized)>2000:
+            raise ValueError
+    except (ValueError,TypeError):
+        normalized = ''
+    return {'identity_url':normalized}

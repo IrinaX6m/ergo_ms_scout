@@ -47,7 +47,7 @@ def _compare_runs(base, target, *, field, limit, cursor) -> dict:
     has_more = len(page) > limit
     page = page[:limit]
     records = _page_records(page, field)
-    sku_field = target.job_revision.identity['field']
+    profile = target.job_revision.identity
     return {
         'job_public_id': str(target.job_revision.job.public_id),
         'field': field,
@@ -55,7 +55,7 @@ def _compare_runs(base, target, *, field, limit, cursor) -> dict:
         'target': target_summary,
         'counts': counts,
         'changes': [
-            _change_payload(key, status, records.get(before_id), records.get(after_id), field, sku_field)
+            _change_payload(key, status, records.get(before_id), records.get(after_id), field, profile)
             for key, status, before_id, after_id in page
         ],
         'next_cursor': signing.dumps([*cursor_context, page[-1][0]], salt=_CURSOR_SALT) if has_more else None,
@@ -71,9 +71,9 @@ def _validate_pair(base, target, field) -> dict:
     if (
         base_revision.job_id != target_revision.job_id
         or base_revision.plan_hash != target_revision.plan_hash
-        or any((revision.identity or {}).get('kind') != 'sku' for revision in (base_revision, target_revision))
+        or any((revision.identity or {}).get('kind') not in ('sku','field','url') for revision in (base_revision, target_revision))
     ):
-        raise ScoutError('comparison_incompatible', _('Нужны запуски одного плана с профилем SKU'))
+        raise ScoutError('comparison_incompatible', _('Нужны запуски одного плана с профилем ключа'))
     if base.started_at >= target.started_at:
         raise ScoutError('invalid_comparison', _('Исходный сбор должен начаться раньше повторного'))
     rule = next((rule for rule in target_revision.fields if rule['name'] == field), None)
@@ -162,10 +162,11 @@ def _page_records(page, field):
     ).in_bulk(ids)
 
 
-def _change_payload(key, status, before, after, field, sku_field) -> dict:
+def _change_payload(key, status, before, after, field, profile) -> dict:
     return {
         'entity_key': key,
-        'sku': (after or before).values[sku_field]['raw'].strip(),
+        **({'sku': (after or before).values[profile['field']]['raw'].strip()} if profile['kind']=='sku'
+           else {'key':{'kind':profile['kind'],'value':(after or before).identity_state.get('key_value')}}),
         'status': status,
         'before': _side_payload(before, field),
         'after': _side_payload(after, field),

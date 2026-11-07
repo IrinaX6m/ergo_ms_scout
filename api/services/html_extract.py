@@ -20,7 +20,8 @@ _HEADER_CHARSET = re.compile(r'charset\s*=\s*["\']?([A-Za-z0-9._-]+)', re.I)
 
 
 def extract_html(body: bytes, rules: list[dict], record=None, content_type: str = '', charset: str = '',
-                 *, require_match: bool = False, sku_field: str | None = None) -> list[dict]:
+                 *, require_match: bool = False, sku_field: str | None = None,
+                 identity_url: str | None = None) -> list[dict]:
     request = build_extract_request(rules)
     if request['protocol_version'] != PROTOCOL_VERSION:
         raise ScoutError('bad_contract', 'protocol')
@@ -36,22 +37,24 @@ def extract_html(body: bytes, rules: list[dict], record=None, content_type: str 
         page_rules = [rule for rule in rules if rule.get('scope') != 'record']
         record_rules = [rule for rule in rules if rule.get('scope') == 'record']
         targets = containers
-    actual_evidence = require_match or sku_field is not None
-    shared = [_cell(root, rule, relative=False, actual_evidence=actual_evidence, sku_field=sku_field)
+    keyed = sku_field is not None or identity_url is not None
+    actual_evidence = require_match or keyed
+    shared = [_cell(root, rule, relative=False, actual_evidence=actual_evidence, sku_field=sku_field, keyed=keyed)
               for rule in page_rules]
     has_conversion = any('conversion' in rule for rule in rules)
     rows = []
     for index, node in enumerate(targets):
         values = {}
         evidence = []
-        relative_cells = [_cell(node, rule, relative=True, actual_evidence=actual_evidence, sku_field=sku_field)
+        relative_cells = [_cell(node, rule, relative=True, actual_evidence=actual_evidence, sku_field=sku_field, keyed=keyed)
                           for rule in record_rules]
         for rule, cell in zip(page_rules + record_rules, shared + relative_cells):
-            _put(values, evidence, rule, cell, index, typed_evidence=sku_field is not None)
+            _put(values, evidence, rule, cell, index, typed_evidence=keyed)
         if require_match and not evidence:
             continue
-        if sku_field is not None:
-            sku_match = next(cell['sku_match'] for cell in shared + relative_cells if 'sku_match' in cell)
+        if keyed:
+            sku_match = (('resolved', identity_url) if identity_url else ('invalid', None)) if identity_url is not None else next(
+                cell['sku_match'] for cell in shared + relative_cells if 'sku_match' in cell)
             rows.append({'observation_index': index, 'sku_match': sku_match, 'values': values, 'evidence': evidence})
             continue
         identity_values = legacy_values(values) if has_conversion else values
@@ -157,13 +160,13 @@ def _containers(root, record):
     return elements
 
 
-def _cell(node, rule: dict, *, relative: bool, actual_evidence: bool, sku_field: str | None) -> dict:
+def _cell(node, rule: dict, *, relative: bool, actual_evidence: bool, sku_field: str | None, keyed=False) -> dict:
     target = _isolate(node) if relative else node
     is_sku = rule['name'] == sku_field
     found = _nodes(target, rule, relative=relative, raw_result=is_sku)
     matches = _coerce(found) if is_sku else found
     cell = cell_from_matches(
-        matches, many=rule.get('many'), conversion=rule.get('conversion'), collect_evidence=sku_field is not None,
+        matches, many=rule.get('many'), conversion=rule.get('conversion'), collect_evidence=keyed,
     )
     if actual_evidence and not matches:
         cell['parts'] = []

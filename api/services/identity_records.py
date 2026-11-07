@@ -23,6 +23,7 @@ def store_identity_rows(snapshot, revision, schema, rules, rows) -> None:
             ).first()
         state = merge_identity_state(
             existing.identity_state if existing else {}, row, grouped=key is not None, field_names=field_names,
+            profile=revision.identity,
         )
         if existing is None:
             existing = Record.objects.create(
