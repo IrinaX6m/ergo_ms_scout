@@ -74,7 +74,7 @@ def suggest_plan(snapshot, goal: str) -> dict:
     return draft
 
 
-def _sample_html(body: bytes, charset: str) -> str:
+def _sample_html(body: bytes, charset: str, max_bytes=_MAX_SAMPLE_BYTES) -> str:
     root = html.document_fromstring(decode_html(body, charset=charset))
     for node in list(root.iter()):
         if node is not root and (not isinstance(node.tag, str) or node.tag in _DROP_TAGS or 'hidden' in node.attrib):
@@ -84,10 +84,10 @@ def _sample_html(body: bytes, charset: str) -> str:
                 if key not in ('class', 'id'):
                     del node.attrib[key]
     sample = html.tostring(root, encoding='utf-8', method='html')
-    return sample[:_MAX_SAMPLE_BYTES].decode('utf-8', errors='ignore')
+    return sample[:max_bytes].decode('utf-8', errors='ignore')
 
 
-def _generate(prompt: str) -> object:
+def _generate(prompt: str, *, system_prompt=None) -> object:
     configured = getattr(settings, 'SCOUT_AI_TIMEOUT_SECONDS', os.environ.get('SCOUT_AI_TIMEOUT_SECONDS'))
     try:
         timeout = _TIMEOUT_SECONDS if configured is None else max(1, min(60, int(configured)))
@@ -102,7 +102,7 @@ def _generate(prompt: str) -> object:
         try:
             response = bridge.call(
                 'ollama_framework.chat', messages=[
-                    {'role': 'system', 'content': _SYSTEM},
+                    {'role': 'system', 'content': system_prompt or _SYSTEM},
                     {'role': 'user', 'content': prompt},
                 ],
                 temperature=0, num_predict=4096,
@@ -132,7 +132,7 @@ def _generate(prompt: str) -> object:
     return response
 
 
-def _read_rules(response: object) -> dict:
+def _read_object(response: object) -> dict:
     if not isinstance(response, str) or len(response) > _MAX_RESPONSE_CHARS:
         raise _invalid_model_response()
     response = response.strip()
@@ -143,7 +143,14 @@ def _read_rules(response: object) -> dict:
         rules = json.loads(response)
     except (ValueError, RecursionError):
         raise _invalid_model_response() from None
-    if not isinstance(rules, dict) or rules.keys() != {'record', 'fields'}:
+    if not isinstance(rules,dict):
+        raise _invalid_model_response()
+    return rules
+
+
+def _read_rules(response: object) -> dict:
+    rules=_read_object(response)
+    if rules.keys() != {'record', 'fields'}:
         raise _invalid_model_response()
     record, fields = rules['record'], rules['fields']
     if record is not None:

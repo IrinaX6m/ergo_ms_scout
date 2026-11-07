@@ -84,6 +84,8 @@ class PlanSuggestionView(BaseAPIView):
     def post(self, request):
         try:
             data = _request_object(request.data)
+            if 'pages' in data:
+                return _pages_suggestion(request,data)
             public_id = data.get('snapshot_public_id')
             goal = data.get('goal')
             goal = goal.strip() if isinstance(goal, str) else ''
@@ -105,12 +107,48 @@ class PlanSuggestionView(BaseAPIView):
                 'snapshot_not_ready': 409,
                 'invalid_model_response': 502,
                 'model_unavailable': 503,
+                'snapshot_proxy_mismatch':409,
             }.get(exc.code)
             return Response(error_payload(exc), status=status or error_status(exc))
         return Response(
             {'snapshot_public_id': str(snapshot.public_id), 'draft': draft},
             headers={'Cache-Control': 'no-store'},
         )
+
+
+def _pages_suggestion(request,data):
+    from contextlib import ExitStack
+    from .services.plan_suggestions_pages import suggest_pages
+    from .services.retention_locks import read_resource
+
+    if set(data)!={'goal','pages'} or not isinstance(data['pages'],list) or not 2<=len(data['pages'])<=5:
+        raise ScoutError('invalid_snapshot_set','Укажите цель и от двух до пяти примеров типов')
+    goal=data['goal'].strip() if isinstance(data['goal'],str) else ''
+    if not 1<=len(goal)<=2000:
+        raise ScoutError('invalid','Укажите цель длиной от 1 до 2000 символов')
+    examples=[]
+    ids=set()
+    for sample in data['pages']:
+        if not isinstance(sample,dict) or set(sample)!={'snapshot_public_id','id','action','match'}:
+            raise ScoutError('invalid_snapshot_set','Пример требует UUID снимка, id, action и match')
+        try:
+            uid=UUID(str(sample['snapshot_public_id']))
+        except (ValueError,TypeError):
+            raise ScoutError('invalid_snapshot_set','Укажите корректный UUID снимка') from None
+        if uid in ids:
+            raise ScoutError('invalid_snapshot_set','Снимки не должны повторяться')
+        ids.add(uid)
+        snapshot=_get_snapshot(request.user,uid)
+        examples.append({**{key:sample[key] for key in ('id','action','match')},'snapshot':snapshot})
+    with ExitStack() as stack:
+        for sample in sorted(examples,key=lambda row:row['snapshot'].pk):
+            stack.enter_context(read_resource(f"visual:{sample['snapshot'].pk}"))
+            sample['snapshot']=_get_snapshot(request.user,sample['snapshot'].public_id)
+            if snapshot_status(sample['snapshot'])[0]!='ready':
+                raise ScoutError('snapshot_not_ready','Снимок недоступен для проверки')
+        draft=suggest_pages(examples,goal)
+    return Response({'snapshot_public_ids':[str(sample['snapshot'].public_id) for sample in examples],'draft':draft},
+                    headers={'Cache-Control':'no-store'})
 
 
 def _request_object(data):
