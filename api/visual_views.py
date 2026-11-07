@@ -18,6 +18,7 @@ from .services.access import require_user_public_id
 from .services.errors import ScoutError
 from .services.plan_suggestions import SuggestionSelectorError, suggest_plan
 from .services.visual_rules import VisualDocument
+from .services.visual_tree import MISSING, check_tree_version, tree_version
 from .services.visual_snapshots import SNAPSHOT_TTL, create_snapshot, enqueue_snapshot, snapshot_status
 from .services.retention_locks import visual_response
 
@@ -53,7 +54,7 @@ class VisualSnapshotDetailView(BaseAPIView):
         result = {'public_id': str(snapshot.public_id), 'status': status}
         if status == 'ready':
             document = VisualDocument(bytes(snapshot.body), snapshot.charset)
-            result.update(final_url=snapshot.final_url, html=document.editor_html())
+            result.update(final_url=snapshot.final_url, html=document.editor_html(), tree_version=tree_version(snapshot))
         if error is not None:
             result['error'] = error
         return Response(result, headers={'Cache-Control': 'no-store'})
@@ -67,14 +68,17 @@ class VisualSnapshotCheckView(BaseAPIView):
         snapshot = _get_snapshot(request.user, public_id)
         status, _ = snapshot_status(snapshot)
         if status != 'ready':
-            return Response({'code': 'snapshot_not_ready', 'detail': 'Снимок недоступен для проверки'}, status=409)
+            return Response({'code': 'snapshot_not_ready', 'detail': 'Снимок недоступен для проверки'}, status=409,
+                            headers={'Cache-Control': 'no-store'})
         try:
             data = _request_object(request.data)
+            check_tree_version(snapshot, data.get('tree_version', MISSING))
             document = VisualDocument(bytes(snapshot.body), snapshot.charset)
             result = document.check(source_url=snapshot.source_url, record=data.get('record'), field=data.get('field'))
         except ScoutError as exc:
-            return Response(error_payload(exc), status=error_status(exc))
-        return Response(result)
+            return Response(error_payload(exc), status=409 if exc.code == 'tree_version_changed' else error_status(exc),
+                            headers={'Cache-Control': 'no-store'})
+        return Response(result, headers={'Cache-Control': 'no-store'})
 
 
 class PlanSuggestionView(BaseAPIView):
