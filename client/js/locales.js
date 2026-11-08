@@ -1,11 +1,13 @@
 import workspaceLocales from './workspaceLocales.js'
 import visualLocales from './visualLocales.js'
+import inspectorLocales from '../prototypes/inspectorLocales.js'
 
 export default {
   ru: {
     scout: {
       workspace: workspaceLocales.ru,
       visual: visualLocales.ru,
+      inspector: inspectorLocales.ru,
       routes: { home: 'Сбор данных' },
       title: 'SCOUT',
       lead: 'Укажите адрес страницы и правила полей. Основной сбор начнётся только после подтверждения.',
@@ -129,6 +131,7 @@ export default {
     scout: {
       workspace: workspaceLocales.en,
       visual: visualLocales.en,
+      inspector: inspectorLocales.en,
       routes: { home: 'Data collection' },
       title: 'SCOUT',
       lead: 'Enter a page address and field rules. The main collection starts only after confirmation.',
@@ -252,6 +255,7 @@ export default {
     scout: {
       workspace: workspaceLocales.fr,
       visual: visualLocales.fr,
+      inspector: inspectorLocales.fr,
       routes: { home: 'Collecte de données' },
       title: 'SCOUT',
       lead: 'Indiquez l’adresse de la page et les règles des champs. La collecte principale ne démarre qu’après confirmation.',

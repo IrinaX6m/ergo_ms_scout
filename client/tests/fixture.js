@@ -9,8 +9,10 @@ import { ensureBootLocales, i18n } from '@/i18n/index.js'
 import { initTheme } from '@/js/theme-manager.js'
 import { apiClient } from '@/js/api/manager'
 import ScoutPage from '../components/ScoutPage.vue'
+import ScoutUX004 from '../prototypes/ScoutUX004.vue'
 import locales from '../js/locales.js'
 import '../styles/scout-workflow.scss'
+import '../prototypes/inspector.scss'
 import { installVisualFixture } from './visual-fixture.js'
 
 const jobId = '11111111-1111-4111-8111-111111111111'
@@ -121,7 +123,10 @@ Object.entries(locales).forEach(([locale, messages]) =>
 initTheme()
 const router = createRouter({
   history: createWebHashHistory(),
-  routes: [{ path: '/:pathMatch(.*)*', component: ScoutPage }],
+  routes: [
+    { path: '/ux-004', component: ScoutUX004 },
+    { path: '/:pathMatch(.*)*', component: ScoutPage },
+  ],
 })
 const app = createApp({ render: () => h('div', [h(RouterView), h(NotificationProvider)]) })
 app.use(createPinia()).use(i18n).use(router)

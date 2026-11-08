@@ -4,6 +4,7 @@ import { fieldProblems, planMatchesRun, validSource, workflowStage } from '../js
 import { displayValue, flattenValues } from '../js/recordTable.js'
 import workspaceLocales from '../js/workspaceLocales.js'
 import visualLocales from '../js/visualLocales.js'
+import inspectorLocales from '../prototypes/inspectorLocales.js'
 import { matchSummary, visualPlanStamp } from '../js/visualState.js'
 
 test('a preview and confirmation remain separate from running collection', () => {
@@ -92,6 +93,8 @@ test('new interface keys exist in all supported languages', () => {
   assert.deepEqual(keys(workspaceLocales.fr), keys(workspaceLocales.ru))
   assert.deepEqual(keys(visualLocales.en), keys(visualLocales.ru))
   assert.deepEqual(keys(visualLocales.fr), keys(visualLocales.ru))
+  assert.deepEqual(keys(inspectorLocales.en), keys(inspectorLocales.ru))
+  assert.deepEqual(keys(inspectorLocales.fr), keys(inspectorLocales.ru))
 })
 
 test('visual validation preserves missing rows and detects ambiguous single fields', () => {

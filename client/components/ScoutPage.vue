@@ -18,6 +18,7 @@ import ScoutRuleEditor from './ScoutRuleEditor.vue'
 import ScoutVisualEditor from './ScoutVisualEditor.vue'
 import ScoutCrawlSummary from './ScoutCrawlSummary.vue'
 
+defineProps({ inspectorPrototype: Boolean })
 const { t } = useAppI18n()
 const {
   form,
@@ -124,6 +125,9 @@ function openSystemSettings() {
 
 <template>
   <div class="scout-workflow container-fluid" :aria-busy="loading">
+    <div v-if="inspectorPrototype" class="alert alert-info" role="note">
+      {{ t('scout.inspector.prototype') }}
+    </div>
     <header class="scout-header">
       <div>
         <div class="scout-eyebrow">{{ t('scout.title') }}</div>
@@ -233,6 +237,7 @@ function openSystemSettings() {
           <ScoutVisualEditor
             v-else-if="mode === 'visual'"
             v-model="form"
+            :inspector-prototype="inspectorPrototype"
             :disabled="loading"
             @valid="visualPlanValid = $event"
             @preview="checkPage"

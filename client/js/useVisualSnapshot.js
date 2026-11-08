@@ -28,10 +28,17 @@ export function useVisualSnapshot(url, enabled) {
     const code = response.status || response.response?.status
     const data = response.data || response.response?.data
     error.value = {
-      key: code === 404 ? 'expired' : code === 429 ? 'rateLimit' : 'requestFailed',
+      key:
+        code === 404
+          ? 'expired'
+          : code === 409 && data?.code === 'tree_version_changed'
+            ? 'versionChanged'
+            : code === 429
+              ? 'rateLimit'
+              : 'requestFailed',
       detail: data?.detail || response.message || '',
     }
-    if (code === 404) {
+    if (code === 404 || (code === 409 && data?.code === 'tree_version_changed')) {
       status.value = 'expired'
       snapshot.value = null
       window.clearTimeout(timer)

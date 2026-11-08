@@ -38,6 +38,7 @@ async function main() {
   })
   let page
   try {
+    await require('./inspector-browser.cjs')(browser, output)
     await require('./visual-browser.cjs')(browser, output)
     page = await browser.newPage({ viewport: { width: 1440, height: 1100 } })
     const errors = []
