@@ -27,6 +27,28 @@ def picture(size=(160, 60)):
                    SCOUT_CAPTCHA_ML_TIMEOUT_SECONDS=5, BRIDGE_TRANSPORT='local',
                    MODULE_RUNTIME='monolith', OLLAMA_FRAMEWORK_TRANSPORT='local')
 class CaptchaMLTests(SimpleTestCase):
+    def test_russian_phrase_keeps_spaces_and_legacy_default_stays_ascii(self):
+        with patch.object(captcha_ml.bridge, 'call', return_value='{"answer":"доброе утро"}'):
+            self.assertEqual(captcha_ml.recognize_phrase(picture()), 'доброе утро')
+            with self.assertRaises(ScoutError):
+                captcha_ml.recognize_text(picture())
+
+    def test_phrase_rejects_control_characters_urls_and_overlong_responses(self):
+        for answer in ('слово\nслово', 'https://example.com', 'я' * 65, '   '):
+            with self.subTest(answer_length=len(answer)), patch.object(captcha_ml.bridge, 'call', return_value=json.dumps({'answer': answer})):
+                with self.assertRaises(ScoutError) as error:
+                    captcha_ml.recognize_phrase(picture())
+                self.assertEqual(error.exception.code, 'captcha_model_invalid')
+
+    def test_caller_deadline_bounds_the_local_provider_timeout(self):
+        with patch.object(captcha_ml.bridge, 'call', return_value='{"answer":"12345"}') as call:
+            captcha_ml.recognize_phrase(picture(), timeout_seconds=2)
+            self.assertEqual(call.call_args.kwargs['timeout'], 2)
+        with patch.object(captcha_ml.bridge, 'call') as call:
+            with self.assertRaises(ScoutError):
+                captcha_ml.recognize_phrase(picture(), timeout_seconds=0)
+            call.assert_not_called()
+
     def test_only_normalized_pixels_go_to_new_local_operation(self):
         with patch.object(captcha_ml.bridge, 'call', return_value='{"answer":"48271"}') as call:
             self.assertEqual(captcha_ml.recognize_text(picture(), alphabet='0123456789', min_length=5, max_length=5), '48271')

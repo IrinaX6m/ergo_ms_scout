@@ -1,6 +1,8 @@
-"""Изолированные Django/Celery/Beat/PostgreSQL и собственная HTTPS-форма с флажком.
+"""Изолированные Django/Celery/Beat/PostgreSQL и собственная HTTPS-форма.
 
 --checko дополнительно читает одну реальную публичную карточку, без серий запросов.
+--text-task включает собственную текстовую картинку и настоящую локальную Ollama.
+Модель задаётся SCOUT_CAPTCHA_ML_MODEL, по умолчанию qwen3.5:4b.
 Никаких внешних решателей, токенов Яндекса или собственных обученных весов этот стенд не подменяет.
 """
 
@@ -98,9 +100,21 @@ def run(site):
                ERGO_SEARCH_ENABLED='false', ERGO_LOGS_DIR=str(WORK / 'logs'),
                CELERY_BROKER_URL='sqla+sqlite:///' + (WORK / 'broker.sqlite3').as_posix(),
                CELERY_RESULT_BACKEND='db+sqlite:///' + (WORK / 'results.sqlite3').as_posix())
-    (WORK / (SETTINGS + '.py')).write_text('''import os,ssl
+    env.update(SCOUT_CAPTCHA_TEST_ORIGIN=site.origin,
+               SCOUT_CAPTCHA_TEST_KEYS=env['SCOUT_BROWSER_KEYS'],
+               SCOUT_CAPTCHA_TEST_ML='true' if '--text-task' in sys.argv else 'false',
+               SCOUT_CAPTCHA_TEST_MODEL=os.environ.get('SCOUT_CAPTCHA_ML_MODEL', 'qwen3.5:4b'))
+    (WORK / (SETTINGS + '.py')).write_text('''import os,ssl,json
 from pathlib import Path
 from src.config.patterns.development import *
+SCOUT_BROWSER_ENABLED = True
+SCOUT_BROWSER_CHANNEL = 'chrome'
+SCOUT_BROWSER_ORIGINS = [os.environ['SCOUT_CAPTCHA_TEST_ORIGIN'], 'https://checko.ru']
+SCOUT_BROWSER_KEYS = json.loads(os.environ['SCOUT_CAPTCHA_TEST_KEYS'])
+SCOUT_BROWSER_ACTIVE_KEY = 'probe'
+SCOUT_CAPTCHA_ML_ENABLED = os.environ['SCOUT_CAPTCHA_TEST_ML'] == 'true'
+SCOUT_CAPTCHA_ML_MODEL = os.environ['SCOUT_CAPTCHA_TEST_MODEL']
+SCOUT_CAPTCHA_ML_TIMEOUT_SECONDS = 25
 DATABASES = {'default': {**DATABASES['default'], 'NAME': os.environ['SCOUT_CAPTCHA_DB']}}
 CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
 from modules.scout.api.services import snapshot_store, smartcaptcha_browser
@@ -119,6 +133,15 @@ def _fixture_arguments(gateway, channel):
     options['args'].append('--ignore-certificate-errors-spki-list=' + os.environ['SCOUT_CAPTCHA_FIXTURE_SPKI'])
     return options
 smartcaptcha_browser._launch_arguments = _fixture_arguments
+if SCOUT_CAPTCHA_ML_ENABLED:
+    import modules.ollama_framework
+    modules.ollama_framework.__path__ = [str(Path(__file__).resolve().parents[4] / 'modules/ollama_framework')]
+    INSTALLED_APPS = [*INSTALLED_APPS, 'modules.ollama_framework.api.apps.OllamaFrameworkConfig']
+    from modules.scout.api.services import smartcaptcha_tasks
+    _provider_frame = smartcaptcha_tasks.is_provider_frame
+    def _fixture_frame(url):
+        return url == os.environ['SCOUT_CAPTCHA_TEST_ORIGIN'] + '/advanced' or _provider_frame(url)
+    smartcaptcha_tasks.is_provider_frame = _fixture_frame
 ''', encoding='utf-8')
     with (WORK / 'migrate.log').open('wb') as log:
         subprocess.run([sys.executable, '-m', 'src.manage', 'migrate', '--noinput'], cwd=ROOT, env=env,
@@ -137,6 +160,8 @@ smartcaptcha_browser._launch_arguments = _fixture_arguments
     from src.config.celery import ensure_django_celery_configured
     ensure_django_celery_configured()
     assert connection.vendor == 'postgresql' and connection.settings_dict['NAME'] == DB_NAME
+    from modules.scout.api.services.protection_sessions import browser_enabled
+    assert browser_enabled(site.origin)
     password = secrets.token_urlsafe(24)
     user = get_user_model().objects.create_superuser(username='scout-captcha-live', password=password)
     api = f'http://127.0.0.1:{port}/api/'
@@ -164,7 +189,9 @@ smartcaptcha_browser._launch_arguments = _fixture_arguments
 
     auth = request('POST', 'cms/adp/authorization/', json={'username': user.username, 'password': password})
     SESSION.headers['Authorization'] = 'Bearer ' + auth['access']
-    report = {'fixture_is_our_own_form': True, 'database': 'postgresql', 'cases': []}
+    report = {'fixture_is_our_own_form': True, 'database': 'postgresql', 'cases': [],
+              'text_task': site.text_task,
+              'local_model': env['SCOUT_CAPTCHA_TEST_MODEL'] if site.text_task else None}
 
     def state(path, status):
         def probe():
@@ -209,6 +236,12 @@ smartcaptcha_browser._launch_arguments = _fixture_arguments
     assert_complete(run, path)
     rows = request('GET', path + 'records/')['records']
     assert COOKIE not in json.dumps(rows)
+    if site.text_task:
+        run.refresh_from_db()
+        assert 'Текстовое задание SmartCaptcha решено локальной моделью' in json.dumps(run.events, ensure_ascii=False)
+        assert site.text_submissions and all(site.text_submissions)
+        assert site.text_answer not in json.dumps(rows)
+        assert site.text_answer not in json.dumps(request('GET', path))
     report['cases'].append({'case': 'preview_collection', 'records': 3, 'evidence': 3, 'duplicate_delivery': 'ignored'})
 
     run, path = prepare()
@@ -275,35 +308,52 @@ celery_app.conf.beat_schedule = ScoutBeatConfig('scout').get_beat_schedule()
             from modules.scout.api.services.errors import FetchError
             count = 0
             reason = ''
-            for count in range(1, 66):
+            for count in range(1, 201):
+                tick = time.monotonic()
                 try:
                     fetch_public_html('https://checko.ru/company/promyshlennost-1021100507999',
                                       timeout_seconds=10, max_bytes=1000000)
                 except FetchError as exc:
                     reason = exc.code
                     break
-                time.sleep(.5)
+                time.sleep(max(0, 1 - (time.monotonic() - tick)))
             report['checko_trigger'] = {'requests': count, 'stop_code': reason}
             emit(report['checko_trigger'])
         run, path = prepare('https://checko.ru/company/promyshlennost-1021100507999', crawl=False)
-        begin(path)
-        state(path, 'completed')
+        try:
+            begin(path)
+            state(path, 'completed')
+        except AssertionError:
+            # Отказ настоящего провайдера — результат проверки, а не успех нашей формы.
+            run.refresh_from_db()
+            report['checko_failure'] = {'status': run.status,
+                                       'task_codes': list(run.tasks.exclude(error_code='').values_list('error_code', flat=True))}
+            if run.status not in ('failed', 'cancelled', 'completed', 'completed_with_errors'):
+                raise
         run.refresh_from_db()
         report['checko'] = {'records': run.records.count(), 'evidence': Evidence.objects.filter(record__run=run).count(),
                            'browser_sessions': run.protection_sessions.count(),
                            'checkbox_cleared': 'Флажок SmartCaptcha пройден' in json.dumps(run.events, ensure_ascii=False)}
+        report['checko']['text_task_cleared'] = 'Текстовое задание SmartCaptcha решено локальной моделью' in json.dumps(run.events, ensure_ascii=False)
     for path in WORK.glob('*.log'):
         assert COOKIE.encode() not in path.read_bytes(), path.name
     assert COOKIE.encode() not in (WORK / 'broker.sqlite3').read_bytes()
+    if site.text_task:
+        report['fixture_text_submissions'] = len(site.text_submissions)
+        for path in [*WORK.glob('*.log'), WORK / 'broker.sqlite3']:
+            assert site.text_answer.encode() not in path.read_bytes(), path.name
     report['secrets_in_api_logs_broker'] = False
     report['working_limit'] = 200
     (WORK / 'result.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     emit(report)
+    if report.get('checko_failure'):
+        raise AssertionError('Реальное прохождение Чекко не подтверждено; причина сохранена в result.json')
 
 
 if __name__ == '__main__':
     emit('Artifacts: ' + str(WORK))
     site = SmartCaptchaSite(WORK / 'fixture')
+    site.text_task = '--text-task' in sys.argv
     created = False
     try:
         database(True)

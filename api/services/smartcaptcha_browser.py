@@ -11,6 +11,7 @@ from .browser_egress import BrowserEgress
 from .challenges import raise_for_challenge
 from .errors import FetchError
 from .html_extract import detected_charset
+from .smartcaptcha_tasks import ImageTaskState, solve_text_task
 
 _SLOTS = BoundedSemaphore(1)
 
@@ -112,11 +113,13 @@ async def _browse(url, origin, cookies, gateway, cancelled, max_bytes, channel, 
 
     fatal = []
     submitting = False
+    image_tasks = ImageTaskState()
     with gateway:
         async with async_playwright() as playwright:
             browser = await _launch(playwright, gateway, channel)
             try:
-                context = await browser.new_context(ignore_https_errors=False, accept_downloads=False, service_workers='block')
+                context = await browser.new_context(ignore_https_errors=False, accept_downloads=False,
+                                                    service_workers='block', locale='ru-RU')
                 if cookies:
                     await context.add_cookies(list(cookies))
                 page = await context.new_page()
@@ -154,11 +157,12 @@ async def _browse(url, origin, cookies, gateway, cancelled, max_bytes, channel, 
                         if await form.count() != 1:
                             raise FetchError('captcha_task_unsupported', 'Форма проверки пока не поддержана', retryable=False)
                         if not await _has_token(page):
-                            await page.frame_locator('[data-testid="checkbox-iframe"]').get_by_role('checkbox', name='Я не робот').check(timeout=min(10000, _remaining(gateway)))
+                            await page.frame_locator('[data-testid="checkbox-iframe"]').get_by_role('checkbox', name='Я не робот').click(timeout=min(10000, _remaining(gateway)))
                         while not await _has_token(page):
                             if cancelled.is_set():
                                 raise FetchError('captcha_browser_cancelled', 'Браузерная проверка прервана', retryable=False)
                             _remaining(gateway)
+                            await solve_text_task(page, state=image_tasks, deadline=gateway.deadline, cancelled=cancelled)
                             await page.wait_for_timeout(200)
                         submitting = True
                         async with page.expect_navigation(wait_until='domcontentloaded', timeout=_remaining(gateway)) as navigation:
@@ -183,7 +187,9 @@ async def _browse(url, origin, cookies, gateway, cancelled, max_bytes, channel, 
                     return {'page': {'status': response.status, 'body': body, 'content_type': content_type[:120],
                                      'charset': detected_charset(body, content_type)[:40], 'final_url': page.url},
                             'cookies': selected, 'user_agent': await page.evaluate('navigator.userAgent'),
-                            'egress_bytes': gateway.transferred, 'challenge_present': challenge_present}
+                            'egress_bytes': gateway.transferred, 'challenge_present': challenge_present,
+                            'image_tasks': image_tasks.submissions, 'ml_calls': image_tasks.inferences,
+                            'ml_seconds': round(image_tasks.model_seconds, 3)}
                 except BrowserError as exc:
                     if fatal:
                         raise fatal[0] from None
