@@ -14,6 +14,28 @@ module.exports = async (browser, output) => {
     await ui.getByRole('button', { name: 'Загрузить страницу', exact: true }).click()
     const frame = page.frameLocator('.scout-snapshot-frame iframe')
     await frame.locator('article').first().waitFor()
+    // Opening a second branch while the first response is delayed must remain independent.
+    const firstBranch = ui.locator('[role=treeitem][data-node=n1]')
+    const secondBranch = ui.locator('[role=treeitem][data-node=n4]')
+    await firstBranch.waitFor()
+    await page.evaluate(() => { window.__scoutTest.visual.defer = 'tree' })
+    await firstBranch.locator('button').click()
+    await page.waitForFunction(() => !!window.__scoutTest.visual.release)
+    await secondBranch.locator('button').click()
+    await page.waitForFunction(() => document.querySelector('[data-node=n4]')?.getAttribute('aria-expanded') === 'true')
+    await page.evaluate(() => window.__scoutTest.visual.release())
+    await ui.locator('[role=treeitem][data-node=n2]').waitFor()
+    assert.equal(await firstBranch.getAttribute('aria-expanded'), 'true')
+    assert.equal(await secondBranch.getAttribute('aria-expanded'), 'true', 'Late first branch response collapsed the second branch')
+
+    // A user can also collapse a branch before its children arrive.
+    const thirdBranch = ui.locator('[role=treeitem][data-node=n7]')
+    await page.evaluate(() => { window.__scoutTest.visual.defer = 'tree' })
+    await thirdBranch.locator('button').click()
+    await page.waitForFunction(() => !!window.__scoutTest.visual.release)
+    await thirdBranch.locator('button').click()
+    await page.evaluate(() => window.__scoutTest.visual.release())
+    assert.equal(await thirdBranch.getAttribute('aria-expanded'), 'false', 'Late children reopened a collapsed branch')
     const checks = () =>
       page.evaluate(
         () =>

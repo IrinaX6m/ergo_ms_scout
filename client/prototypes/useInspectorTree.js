@@ -110,14 +110,15 @@ export function useInspectorTree(snapshot, enabled) {
     return data
   }
   async function toggle(id) {
-    const owner = generation
+    if (!version.value || invalid.value) return
     const next = new Set(expanded.value)
-    if (next.has(id)) next.delete(id)
-    else {
-      next.add(id)
-      if (!branches.value[id]) await branch(id)
-    }
-    if (owner === generation) expanded.value = next
+    const opening = !next.has(id)
+    if (opening) next.add(id)
+    else next.delete(id)
+    // Expansion is local interaction state. Publish it before I/O; a response only fills
+    // the branch cache and must not restore an old set of other nodes or undo a collapse.
+    expanded.value = next
+    if (opening && !branches.value[id]) await branch(id)
   }
   async function select(id) {
     if (!version.value || invalid.value) return
