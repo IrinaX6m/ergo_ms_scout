@@ -1,5 +1,7 @@
 export default {
   ru: {
+    versionChanged:
+      'Версия снимка изменилась. Загрузите страницу заново и перепроверьте принятые поля.',
     sourceHint: 'Загрузите сохранённый снимок страницы и выберите нужные элементы.',
     load: 'Загрузить страницу',
     loading: 'Получаем и подготавливаем страницу…',
@@ -42,6 +44,7 @@ export default {
     rateLimit: 'Достигнут лимит загрузок. Попробуйте позже.',
   },
   en: {
+    versionChanged: 'The snapshot version changed. Reload and recheck accepted fields.',
     sourceHint: 'Load a saved page snapshot and select the elements you need.',
     load: 'Load page',
     loading: 'Fetching and preparing the page…',
@@ -82,6 +85,7 @@ export default {
     rateLimit: 'The page load limit has been reached. Try again later.',
   },
   fr: {
+    versionChanged: 'La version a changé. Rechargez et vérifiez les champs acceptés.',
     sourceHint: 'Chargez un instantané de la page et sélectionnez les éléments souhaités.',
     load: 'Charger la page',
     loading: 'Chargement et préparation de la page…',
