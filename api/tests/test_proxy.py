@@ -93,6 +93,10 @@ class _Origin(socketserver.StreamRequestHandler):
         if request.startswith(b'GET /redirect '):
             self.wfile.write(b'HTTP/1.1 302 Found\r\nLocation: https://169.254.169.254/\r\nContent-Length: 0\r\n\r\n')
             return
+        if request.startswith(b'GET /challenge '):
+            self.wfile.write(b'HTTP/1.1 200 OK\r\nCF-Mitigated: challenge\r\nContent-Type: text/html\r\n'
+                             b'Content-Length: 0\r\nConnection: close\r\n\r\n')
+            return
         body = b'<h1>Catalog</h1><a href="/item">Item</a>' if b'/catalog ' in request else b'<h1>Item</h1>'
         self.wfile.write(b'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: '
                          + str(len(body)).encode() + b'\r\nConnection: close\r\n\r\n' + body)
@@ -433,3 +437,28 @@ class ProxyTests(TestCase):
             checked = self.client.post(self.path + profile['public_id'] + '/check/', {}, format='json')
         self.assertEqual(checked.data, {'status': 'failed', 'code': 'proxy_tls_error'})
         self.assertEqual(len(self.proxy.requests), seen)
+
+    def test_challenge_through_https_proxy_is_not_a_snapshot_or_retry(self):
+        from modules.scout.api.models import VisualSnapshot
+        from modules.scout.api.services.visual_snapshots import load_snapshot
+
+        profile = self._profile()
+        with patch('modules.scout.api.views.schedule_publish'):
+            _, state = self._job(profile, url='https://origin.test/challenge')
+        publish_ready(state['public_id'])
+        run = Run.objects.get(public_id=state['public_id'])
+        self.assertEqual((run.status, run.stop_reason), ('failed', 'cloudflare_challenge'))
+        self.assertFalse(run.snapshots.exists())
+        self.assertFalse(run.records.exists())
+        self.assertEqual(run.tasks.get().attempt_count, 1)
+        snapshot = VisualSnapshot.objects.create(user_public_id=self.user.public_id,
+                                                source_url='https://origin.test/challenge',
+                                                proxy_profile_revision_public_id=profile['revision_public_id'])
+        load_snapshot(snapshot.public_id)
+        snapshot.refresh_from_db()
+        self.assertEqual((snapshot.status, snapshot.error_code, bytes(snapshot.body)),
+                         ('failed', 'cloudflare_challenge', b''))
+        result = self.client.get(f'/api/scout/visual-snapshots/{snapshot.public_id}/').data
+        self.assertEqual(result['error']['code'], 'cloudflare_challenge')
+        self.assertNotIn('html', result)
+        self._assert_no_secret(result)

@@ -41,7 +41,8 @@ from .constants import (
 from .errors import ScoutError
 from .plan import IDENTITY_UNSET, normalize_plan, plan_hash
 from .preview import page_type_preview, preview_urls
-from .proxy_profiles import PROXY_FAILURES, validate_revision
+from .proxy_profiles import validate_revision
+from .fetch_failures import STOP_FETCH_FAILURES
 
 
 def create_job(*, user_public_id, title: str, seed_urls, fields, record=None, crawl=None,
@@ -219,7 +220,7 @@ def advance_run(run: Run) -> None:
     if locked.status == RUN_EXPLORING:
         if open_tasks.filter(kind=TASK_FETCH).exists():
             return
-        if locked.stop_reason not in PROXY_FAILURES and locked.snapshots.exists():
+        if locked.stop_reason not in STOP_FETCH_FAILURES and locked.snapshots.exists():
             locked.status = RUN_AWAITING
         else:
             locked.status = RUN_FAILED
@@ -254,10 +255,10 @@ def _finish_if_idle(locked: Run) -> None:
     failed = failed_tasks.exists()
     if failed and failed_tasks.filter(kind=TASK_SITEMAP).exists():
         locked.status = RUN_FAILED
-    elif locked.stop_reason in PROXY_FAILURES and not (locked.records.exists() or locked.crawl_urls.filter(state='done').exists()):
+    elif locked.stop_reason in STOP_FETCH_FAILURES and not (locked.records.exists() or locked.crawl_urls.filter(state='done').exists()):
         locked.status = RUN_FAILED
     else:
-        locked.status = RUN_COMPLETED_WITH_ERRORS if failed or locked.stop_reason in PROXY_FAILURES else RUN_COMPLETED
+        locked.status = RUN_COMPLETED_WITH_ERRORS if failed or locked.stop_reason in STOP_FETCH_FAILURES else RUN_COMPLETED
     locked.finished_at = timezone.now()
     locked.error_summary = _summary(locked)
     locked.save(update_fields=['status', 'finished_at', 'error_summary'])

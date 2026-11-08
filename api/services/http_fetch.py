@@ -11,6 +11,7 @@ from urllib import request as urlrequest
 from django.utils.translation import gettext as _
 
 from .errors import FetchError
+from .challenges import raise_for_challenge
 from .html_extract import detected_charset
 
 logger = logging.getLogger('modules.scout')
@@ -77,15 +78,28 @@ def _fetch_response(url, *, timeout_seconds, max_bytes, url_allowed, handlers, a
             status = getattr(response, 'status', None) or response.getcode()
             final_url = response.geturl()
             content_type = response.headers.get('Content-Type', '')
+            raise_for_challenge(headers=response.headers, url=final_url or url)
             media = content_type.split(';', 1)[0].strip().lower()
             if media_types and media and media not in media_types:
                 raise FetchError('not_html', _('Ответ не является HTML'), retryable=False)
             encoding = response.headers.get('Content-Encoding', '')
             body = _unwrap_content(_read_limited(response, max_bytes), encoding, max_bytes)
+            raise_for_challenge(headers=response.headers, url=final_url or url, body=body, content_type=content_type)
     except FetchError:
         raise
     except urlerror.HTTPError as exc:
-        exc.close()
+        try:
+            raise_for_challenge(headers=exc.headers, url=exc.geturl() or url)
+            # Не читаем весь отказ и не сохраняем форму, cookies или токены проверки.
+            try:
+                body = _unwrap_content(exc.read(min(max_bytes, 64 * 1024)),
+                                       exc.headers.get('Content-Encoding', ''), min(max_bytes, 64 * 1024))
+            except (FetchError, HTTPException, OSError):
+                body = b''
+            raise_for_challenge(headers=exc.headers, url=exc.geturl() or url, body=body,
+                                content_type=exc.headers.get('Content-Type', ''))
+        finally:
+            exc.close()
         retryable = exc.code in (429, 500, 502, 503, 504)
         raise FetchError(
             f'http_{exc.code}',

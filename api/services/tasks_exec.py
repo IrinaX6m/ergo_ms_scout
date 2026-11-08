@@ -40,7 +40,8 @@ from .identity_records import store_identity_rows
 from .product_identity import identity_extract_options
 from .page_types import ambiguous_type_error, effective_fields, matching_page_types
 from .public_http import fetch_public_html, fetch_public_xml, fetch_public_text, public_url_allowed
-from .proxy_profiles import PROXY_FAILURES, PROXY_RETRY_DELAYS
+from .proxy_profiles import PROXY_RETRY_DELAYS
+from .fetch_failures import STOP_FETCH_FAILURES
 from .journal import append_event, describe_extract
 from .runs import advance_run, _finish_if_idle
 from .snapshot_store import read_snapshot_bytes, store_snapshot_bytes
@@ -557,7 +558,7 @@ def _fail(task: Task, token: int, code: str, message: str, *, retryable: bool) -
         else:
             locked.status = TASK_FAILED
             locked.lease_until = None
-            if locked.kind in (TASK_FETCH, TASK_SITEMAP) and code in PROXY_FAILURES:
+            if locked.kind in (TASK_FETCH, TASK_SITEMAP) and code in STOP_FETCH_FAILURES:
                 from .crawl_budget import stop_fetches
 
                 run.stop_reason = code
