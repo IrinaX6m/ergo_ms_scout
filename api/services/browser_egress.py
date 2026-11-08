@@ -17,7 +17,7 @@ class BrowserEgress:
     def __init__(self, origin, *, proxy=None, seconds=45, max_bytes=16 * 1024 * 1024):
         source = urlsplit(origin)
         self.authorities = {(source.hostname, source.port or 443)} | {
-            (host, 443) for host in ('smartcaptcha.yandexcloud.net', 'smartcaptcha.cloud.yandex.ru',
+            (host, 443) for host in ('smartcaptcha.yandexcloud.net', 'img.smartcaptcha.yandexcloud.net', 'smartcaptcha.cloud.yandex.ru',
                                     'captcha-api.yandex.ru', 'yastatic.net', 'avatars.mds.yandex.net')
         }
         self.proxy = proxy

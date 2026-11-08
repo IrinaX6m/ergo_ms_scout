@@ -183,6 +183,8 @@ def fetch_with_challenge(fetch, url, *, scope, proxy_id=None, should_continue=la
             from .journal import append_event
             append_event(scope.pk, 'Флажок SmartCaptcha пройден; целевая страница получена.'
                          if result.get('challenge_present') else 'Целевая страница получена в отдельной браузерной сессии.')
+            if result.get('image_tasks'):
+                append_event(scope.pk, 'Текстовое задание SmartCaptcha решено локальной моделью; целевая страница проверена.')
         return result['page']
     except FetchError as exc:
         interrupted = exc.code == 'captcha_browser_cancelled'

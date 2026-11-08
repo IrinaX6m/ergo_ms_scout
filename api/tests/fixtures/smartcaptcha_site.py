@@ -3,6 +3,8 @@
 import base64
 import hashlib
 import ipaddress
+import io
+import json
 import ssl
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,6 +25,11 @@ class SmartCaptchaSite:
         self.hold = False
         self.reject = False
         self.hits = []
+        self.text_task = False
+        self.text_answer = '48271'
+        self.text_submissions = []
+        self.task_version = 1
+        self.refresh_text = False
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -31,7 +38,26 @@ class SmartCaptchaSite:
                 owner.hits.append({'method': 'GET', 'path': self.path, 'cleared': cleared})
                 if self.path == '/frame':
                     callback = '' if owner.hold else "parent.document.querySelector('[name=smart-token]').value='fixture-answer'"
+                    if owner.text_task and not owner.hold:
+                        callback = "let f=parent.document.createElement('iframe');f.dataset.testid='advanced-iframe';f.src='/advanced';parent.document.body.append(f)"
                     return self.respond(200, '<input type="checkbox" aria-label="Я не робот" onclick="' + callback + '">')
+                if self.path == '/advanced':
+                    poll = ("let poll=setInterval(async()=>{let v=await (await fetch('/version')).text();"
+                            "if(v!='1'){document.querySelector('img').src='/task.png?v='+v;clearInterval(poll)}},100)") if owner.refresh_text else ''
+                    return self.respond(200, '''<img aria-hidden="true" alt="Задание с картинкой" src="/task.png?v=1">
+<input name="rep" placeholder="Строчные или прописные буквы"><button onclick="send()">Отправить</button>
+<script>async function send(){let r=await fetch('/verify-text',{method:'POST',body:new URLSearchParams({answer:document.querySelector('[name=rep]').value})});
+if((await r.json()).valid){parent.document.querySelector('[name=smart-token]').value='fixture-answer';parent.document.querySelector('[data-testid=advanced-iframe]').style.display='none'}
+else{document.querySelector('img').src='/task.png?v='+Date.now()}};''' + poll + '</script>')
+                if self.path.startswith('/task.png'):
+                    from PIL import Image, ImageDraw, ImageFont
+                    image = Image.new('RGB', (240, 80), 'white')
+                    ImageDraw.Draw(image).text((16, 12), owner.text_answer, font=ImageFont.load_default(size=44), fill='black')
+                    buffer = io.BytesIO()
+                    image.save(buffer, format='PNG')
+                    return self.respond(200, buffer.getvalue(), mime='image/png')
+                if self.path == '/version':
+                    return self.respond(200, str(owner.task_version))
                 if not cleared or self.path == '/hold' and owner.hold:
                     return self.respond(429, '''<title>Пожалуйста, подтвердите, что вы человек!</title>
 <script src="https://smartcaptcha.yandexcloud.net/captcha.js"></script>
@@ -45,6 +71,10 @@ class SmartCaptchaSite:
             def do_POST(self):
                 body = self.rfile.read(min(int(self.headers.get('Content-Length', '0')), 8192)).decode()
                 fields = parse_qs(body)
+                if self.path == '/verify-text':
+                    valid = fields.get('answer') == [owner.text_answer]
+                    owner.text_submissions.append(valid)
+                    return self.respond(200, json.dumps({'valid': valid}), mime='application/json')
                 owner.hits.append({'method': 'POST', 'path': self.path, 'valid': fields.get('smart-token') == ['fixture-answer']})
                 if owner.reject or fields.get('smart-token') != ['fixture-answer']:
                     return self.respond(429, '<title>CAPTCHA</title>Not cleared')
@@ -54,10 +84,10 @@ class SmartCaptchaSite:
                 self.send_header('Content-Length', '0')
                 self.end_headers()
 
-            def respond(self, code, text):
-                body = text.encode()
+            def respond(self, code, text, mime='text/html; charset=utf-8'):
+                body = text if isinstance(text, bytes) else text.encode()
                 self.send_response(code)
-                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Content-Type', mime)
                 # Собственный виджет ниже: к настоящему провайдеру фикстура не обращается.
                 self.send_header('Content-Security-Policy', "script-src 'unsafe-inline'; object-src 'none'")
                 self.send_header('Content-Length', str(len(body)))
