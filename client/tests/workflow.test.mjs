@@ -211,3 +211,35 @@ test('product copy has matching translation keys', async () => {
   assert.deepEqual(keys(locales.ru),keys(locales.en))
   assert.deepEqual(keys(locales.ru),keys(locales.fr))
 })
+
+
+test('daily schedules require an approved unchanged plan and keep the pinned revision until explicit rebind', async () => {
+  const {approvedSchedulePlan,scheduleWrite,writeMatchesSchedule,validScheduleDraft} = await import('../js/scheduleState.js')
+  const plan={public_id:'new-revision',plan_hash:'new-hash',approved:true}
+  assert.equal(approvedSchedulePlan(plan),true)
+  for(const [value,dirty] of [[plan,true],[{...plan,approved:false},false],[{...plan,public_id:''},false],[{...plan,plan_hash:''},false]]) assert.equal(approvedSchedulePlan(value,dirty),false)
+  const draft={local_time:'09:00',timezone:' Europe/Moscow ',enabled:true}
+  const current={version:7,plan_revision_public_id:'old-revision',plan_hash:'old-hash'}
+  const edited=scheduleWrite(draft,current,plan)
+  assert.deepEqual(edited,{local_time:'09:00',timezone:'Europe/Moscow',enabled:true,expected_version:7})
+  assert.deepEqual(scheduleWrite(draft,current,plan,true),{...edited,plan_revision_public_id:'new-revision',plan_hash:'new-hash'})
+  assert.deepEqual(scheduleWrite(draft,null,plan),{local_time:'09:00',timezone:'Europe/Moscow',enabled:true,plan_revision_public_id:'new-revision',plan_hash:'new-hash'})
+  assert.equal(writeMatchesSchedule({...edited,version:8},edited),true)
+  assert.equal(writeMatchesSchedule({...edited,enabled:false},edited),false)
+  assert.equal(writeMatchesSchedule(null,edited),false)
+  for(const local_time of ['24:00','12:60','9:00','']) assert.equal(validScheduleDraft({...draft,local_time}),false)
+  assert.equal(validScheduleDraft(draft),true)
+})
+
+test('schedule dates stay on the local calendar day and all server states have translated labels', async () => {
+  const {scheduleDate,scheduleMoment,OCCURRENCE_STATUSES,OCCURRENCE_REASONS}=await import('../js/scheduleState.js')
+  const {default:locales}=await import('../js/scheduleLocales.js')
+  assert.equal(scheduleDate('2026-10-25','en'),'Oct 25, 2026')
+  assert(scheduleMoment('2026-10-26T06:00:00Z','Europe/Moscow','en').includes('9:00'))
+  assert.equal(scheduleMoment(null,'Europe/Moscow'),'—')
+  for(const locale of ['ru','en','fr']) {
+    assert.deepEqual(Object.keys(locales[locale]).sort(),Object.keys(locales.ru).sort())
+    for(const status of OCCURRENCE_STATUSES) assert(locales[locale].statuses[status])
+    for(const reason of OCCURRENCE_REASONS) assert(locales[locale].reasons[reason])
+  }
+})

@@ -1,3 +1,4 @@
+import scheduleLocales from './scheduleLocales.js'
 import productLocales from './productLocales.js'
 import workspaceLocales from './workspaceLocales.js'
 import visualLocales from './visualLocales.js'
@@ -8,6 +9,7 @@ export default {
     scout: {
       workspace: workspaceLocales.ru,
       product: productLocales.ru,
+      schedule: scheduleLocales.ru,
       visual: visualLocales.ru,
       inspector: inspectorLocales.ru,
       routes: { home: 'Сбор данных' },
@@ -143,6 +145,7 @@ export default {
     scout: {
       workspace: workspaceLocales.en,
       product: productLocales.en,
+      schedule: scheduleLocales.en,
       visual: visualLocales.en,
       inspector: inspectorLocales.en,
       routes: { home: 'Data collection' },
@@ -278,6 +281,7 @@ export default {
     scout: {
       workspace: workspaceLocales.fr,
       product: productLocales.fr,
+      schedule: scheduleLocales.fr,
       visual: visualLocales.fr,
       inspector: inspectorLocales.fr,
       routes: { home: 'Collecte de données' },

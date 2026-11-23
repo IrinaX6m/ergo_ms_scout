@@ -1,5 +1,5 @@
 // Isolated browser fixture: real Scout UI, core controls and router, simulated API only.
-import { createApp, h } from 'vue'
+import { createApp, h, reactive } from 'vue'
 import { createPinia } from 'pinia'
 import { createRouter, createWebHashHistory, RouterView } from 'vue-router'
 import '@/scss/styles.scss'
@@ -8,6 +8,8 @@ import NotificationProvider from '@/components/NotificationProvider.vue'
 import { ensureBootLocales, i18n } from '@/i18n/index.js'
 import { initTheme } from '@/js/theme-manager.js'
 import { apiClient } from '@/js/api/manager'
+import ScoutSchedulePanel from '../components/ScoutSchedulePanel.vue'
+import { installScheduleFixture } from './schedule-fixture.js'
 import ScoutPage from '../components/ScoutPage.vue'
 import ScoutUX004 from '../prototypes/ScoutUX004.vue'
 import locales from '../js/locales.js'
@@ -217,6 +219,12 @@ apiClient.post = async (url, body) => {
   }
   return productPost(url, body)
 }
+const scheduleContext = reactive({
+  jobId,
+  plan: { public_id: 'revision-one', plan_hash: 'hash-one', approved: true, revision_number: 1 },
+  planDirty: false,
+})
+installScheduleFixture(apiClient, fixture, scheduleContext)
 window.__scoutTest = fixture
 window.addEventListener('ergo:open-user-settings', () => {
   fixture.systemOpened += 1
@@ -230,6 +238,13 @@ initTheme()
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
+    {
+      path: '/schedule-test',
+      component: {
+        render: () =>
+          h('main', { class: 'scout-workflow' }, [h(ScoutSchedulePanel, scheduleContext)]),
+      },
+    },
     { path: '/ux-004', component: ScoutUX004 },
     { path: '/product', component: ScoutPage },
     {

@@ -670,7 +670,19 @@ export function useScoutWorkflow() {
     window.clearTimeout(pollTimer)
   })
 
+  const scheduleJobId = computed(() => (loadedJob.value === query.value.job ? loadedJob.value : ''))
+  const schedulePlan = computed(() => {
+    if (!scheduleJobId.value || !savedRevision.value) return null
+    const approved =
+      savedRevision.value.approved === true ||
+      (run.value?.approved === true &&
+        run.value.job_public_id === loadedJob.value &&
+        run.value.plan_hash === savedRevision.value.plan_hash)
+    return { ...savedRevision.value, approved }
+  })
   return {
+    scheduleJobId,
+    schedulePlan,
     visualPlanValid,
     applySuggestion,
     form,

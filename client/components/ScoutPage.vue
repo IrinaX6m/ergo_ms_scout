@@ -17,12 +17,15 @@ import ScoutRuleEditor from './ScoutRuleEditor.vue'
 import ScoutPlanOptions from './ScoutPlanOptions.vue'
 import ScoutAiEditor from './ScoutAiEditor.vue'
 import ScoutVisualEditor from './ScoutVisualEditor.vue'
+import ScoutSchedulePanel from './ScoutSchedulePanel.vue'
 import ScoutCrawlSummary from './ScoutCrawlSummary.vue'
 
 defineProps({ inspectorPrototype: Boolean, inspectorEnabled: { type: Boolean, default: true } })
 const { t } = useAppI18n()
 const {
   form,
+  scheduleJobId,
+  schedulePlan,
   applySuggestion,
   recordsLoading,
   visualPlanValid,
@@ -495,6 +498,14 @@ function openSystemSettings() {
             {{ t('scout.workspace.retry') }}
           </button>
         </div>
+        <ScoutSchedulePanel
+          v-if="scheduleJobId && ['confirm', 'collect', 'result'].includes(stage)"
+          :key="scheduleJobId"
+          :job-id="scheduleJobId"
+          :plan="schedulePlan"
+          :plan-dirty="dirty"
+          :disabled="loading"
+        />
         <details
           v-if="run && (journal.length || run.crawl?.mode === 'site')"
           class="scout-execution-details"
