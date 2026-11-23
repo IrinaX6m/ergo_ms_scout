@@ -160,6 +160,7 @@ const tree = useInspectorTree(
 const recordSelector = ref(form.value.recordSelector || '')
 const draft = reactive({ name: 'field_1', selector: '', many: false, scope: 'page' })
 const editing = ref(-1)
+const canCancel = computed(() => editing.value >= 0 || manualRule.value || !!selectedNode.value)
 const result = ref(null)
 const checkedStamp = ref('')
 const acceptedStamp = ref('')
@@ -389,8 +390,15 @@ function cancelSelection() {
   checkedStamp.value = ''
   invalidateCheck()
   tree.clearSelection()
-  if (editing.value >= 0) Object.assign(draft, form.value.fields[editing.value])
-  else draft.selector = ''
+  editing.value = -1
+  manualRule.value = false
+  recordSelector.value = form.value.recordSelector || ''
+  Object.assign(draft, {
+    name: `field_${fields.value.length + 1}`,
+    selector: '',
+    many: false,
+    scope: form.value.recordMode === 'cards' ? 'record' : 'page',
+  })
 }
 function accept() {
   if (!acceptable.value) return
@@ -403,13 +411,15 @@ function accept() {
     form.value.recordSelector = accepted.record.selector
     cardStamp.value = currentCardStamp.value
     acceptedStamp.value = ''
+    manualRule.value = false
     target.value = 'field'
     draft.scope = 'record'
     return
   }
   const field = { ...result.value.field }
-  const conversion = form.value.fields[editing.value]?.conversion
-  if (conversion && !field.many) field.conversion = conversion
+  const previousField = form.value.fields[editing.value]
+  if (previousField?.conversion && !field.many) field.conversion = previousField.conversion
+  if (previousField?.typeSelectors) field.typeSelectors = previousField.typeSelectors
   const duplicate = form.value.fields.findIndex(
     (item, index) => item.name === field.name && index !== editing.value,
   )
@@ -431,17 +441,7 @@ function accept() {
     )
   )
     acceptedStamp.value = visualPlanStamp(form.value)
-  result.value = null
-  checkedStamp.value = ''
-  ancestors.value = []
-  selectedNode.value = ''
-  editing.value = -1
-  Object.assign(draft, {
-    name: `field_${fields.value.length + 1}`,
-    selector: '',
-    many: false,
-    scope: form.value.recordMode === 'cards' ? 'record' : 'page',
-  })
+  cancelSelection()
 }
 const duplicateName = computed(() =>
   form.value.fields.some(
@@ -923,7 +923,7 @@ function removeField(index) {
         <button
           type="button"
           class="btn btn-outline-secondary"
-          :disabled="disabled || !selectedNode"
+          :disabled="disabled || !canCancel"
           @click="cancelSelection"
         >
           {{ t('scout.inspector.cancel') }}

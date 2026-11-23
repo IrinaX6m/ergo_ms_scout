@@ -2,6 +2,7 @@
 import { useId, onUnmounted, ref, reactive, watch } from 'vue'
 import { apiClient } from '@/js/api/manager'
 import { useAppI18n } from '@/i18n/useAppI18n.js'
+import { addPageType, setTypeSelector } from '../js/planOptions.js'
 const form = defineModel({ type: Object, required: true })
 defineProps({ disabled: Boolean })
 const uid = useId()
@@ -11,6 +12,16 @@ const profiles = ref([]),
   message = ref(''),
   outcome = ref('')
 const proxy = reactive({ ip: '', port: 8443, auth_type: 'none', username: '', password: '' })
+const profilesEndpoint = 'scout/proxy-profiles/'
+function proxyWriteUsesHttps() {
+  try {
+    const url = apiClient.client.getUri({ url: profilesEndpoint })
+    return new URL(url, document.baseURI).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+const proxyWriteAllowed = proxyWriteUsesHttps()
 const quiet = { quietStatuses: [400, 403, 404, 409, 429, 500, 502, 503] }
 let generation = 0
 onUnmounted(() => {
@@ -39,10 +50,14 @@ async function request(action) {
   const owner = generation
   try {
     let response
-    if (action === 'list') response = await apiClient.get('scout/proxy-profiles/', {}, true, quiet)
-    else if (action === 'create')
+    if (action === 'list') response = await apiClient.get(profilesEndpoint, {}, true, quiet)
+    else if (action === 'create') {
+      if (!proxyWriteUsesHttps()) {
+        message.value = t('scout.product.proxyRequiresHttps')
+        return
+      }
       response = await apiClient.post(
-        'scout/proxy-profiles/',
+        profilesEndpoint,
         {
           ip: proxy.ip.trim(),
           port: Number(proxy.port),
@@ -54,7 +69,7 @@ async function request(action) {
         true,
         quiet,
       )
-    else {
+    } else {
       const profile = profiles.value.find(
         (item) => item.revision_public_id === form.value.proxyRevision,
       )
@@ -91,32 +106,9 @@ function loadOptions(event) {
   if (event.target === event.currentTarget && event.target.open && !profiles.value.length)
     request('list')
 }
-function overrides(type) {
-  try {
-    const value = JSON.parse(type.selectorsText || '{}')
-    return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
-  } catch {
-    return {}
-  }
-}
-function setOverride(type, name, key, value) {
-  const rules = overrides(type)
-  rules[name] = {
-    ...(rules[name] || {
-      kind: form.value.fields.find((field) => field.name === name)?.kind || 'css',
-      selector: '',
-    }),
-    [key]: value,
-  }
-  type.selectorsText = JSON.stringify(rules)
-}
-function addType() {
-  form.value.pageTypes.push({
-    id: `type_${form.value.pageTypes.length + 1}`,
-    action: 'extract',
-    match: [{ kind: 'prefix', pattern: '/' }],
-    selectorsText: '{}',
-  })
+function selectExtractionMode(mode) {
+  if (mode === 'types' && !form.value.pageTypes.length) addPageType(form.value)
+  form.value.extractionMode = mode
 }
 </script>
 <template>
@@ -173,6 +165,9 @@ function addType() {
       <p v-if="message" class="scout-warning" role="alert">{{ message }}</p>
       <details>
         <summary>{{ t('scout.product.createProxy') }}</summary>
+        <p v-if="!proxyWriteAllowed" class="scout-warning" role="status">
+          {{ t('scout.product.proxyRequiresHttps') }}
+        </p>
         <label class="scout-input-label" :for="`${uid}-2`"
           >{{ t('scout.product.ip')
           }}<input
@@ -212,6 +207,7 @@ function addType() {
               :id="`${uid}-5`"
               :aria-label="t('scout.product.username')"
               v-model="proxy.username"
+              :disabled="!proxyWriteAllowed"
               class="form-control"
               autocomplete="off" /></label
           ><label class="scout-input-label" :for="`${uid}-6`"
@@ -220,6 +216,7 @@ function addType() {
               :id="`${uid}-6`"
               :aria-label="t('scout.product.password')"
               v-model="proxy.password"
+              :disabled="!proxyWriteAllowed"
               class="form-control"
               type="password"
               autocomplete="new-password" /></label
@@ -228,6 +225,7 @@ function addType() {
           type="button"
           class="btn btn-outline-secondary mt-2"
           :disabled="
+            !proxyWriteAllowed ||
             !proxy.ip ||
             !proxy.port ||
             (proxy.auth_type === 'basic' && (!proxy.username || !proxy.password))
@@ -295,6 +293,7 @@ function addType() {
             :id="`${uid}-10`"
             :aria-label="t('scout.product.sitemap')"
             v-model="form.sitemapUrl"
+            :disabled="form.sitemapFromRobots"
             type="url"
             class="form-control"
         /></label>
@@ -307,87 +306,115 @@ function addType() {
           />
           {{ t('scout.product.robots') }}</label
         >
-        <h3 class="h6 mt-4">{{ t('scout.product.pageTypes') }}</h3>
-        <div v-for="(type, index) in form.pageTypes" :key="index" class="scout-field-rule">
-          <label class="scout-input-label" :for="`${uid}-12-${index}`"
-            >{{ t('scout.product.typeId')
-            }}<input
-              :id="`${uid}-12-${index}`"
-              :aria-label="t('scout.product.typeId')"
-              v-model="type.id"
-              class="form-control"
-          /></label>
-          <label class="scout-input-label" :for="`${uid}-13-${index}`"
-            >{{ t('scout.product.pageAction')
-            }}<select
-              :id="`${uid}-13-${index}`"
-              :aria-label="t('scout.product.pageAction')"
-              v-model="type.action"
-              class="form-select"
-            >
-              <option value="extract">{{ t('scout.product.extract') }}</option>
-              <option value="discover">{{ t('scout.product.discover') }}</option>
-            </select></label
+        <label class="scout-input-label mt-4" :for="`${uid}-extraction-mode`">
+          {{ t('scout.product.extractionMode') }}
+          <select
+            :id="`${uid}-extraction-mode`"
+            :value="form.extractionMode"
+            class="form-select"
+            :aria-label="t('scout.product.extractionMode')"
+            @change="selectExtractionMode($event.target.value)"
           >
-          <label
-            v-for="(rule, ruleIndex) in type.match"
-            :key="ruleIndex"
-            class="scout-input-label"
-            :for="`${uid}-14-${index}-${ruleIndex}`"
-            >{{ t('scout.product.pattern') }} · {{ rule.kind
-            }}<input
-              :id="`${uid}-14-${index}-${ruleIndex}`"
-              :aria-label="t('scout.product.pattern')"
-              v-model="rule.pattern"
-              class="form-control"
-          /></label>
-          <details v-if="type.action === 'extract'">
-            <summary>{{ t('scout.product.overrides') }}</summary>
-            <div
-              v-for="field in form.fields.filter((item) => item.name)"
-              :key="field.name"
-              class="scout-input-label mt-2"
-            >
-              <strong>{{ field.name }}</strong>
-              <label :for="`${uid}-override-kind-${index}-${field.name}`"
-                >{{ t('scout.fieldKind') }}
-                <select
-                  :id="`${uid}-override-kind-${index}-${field.name}`"
-                  class="form-select"
-                  :value="overrides(type)[field.name]?.kind || field.kind"
-                  @change="setOverride(type, field.name, 'kind', $event.target.value)"
-                >
-                  <option value="css">CSS</option>
-                  <option value="xpath">XPath</option>
-                </select></label
+            <option value="filter">{{ t('scout.product.extractFilter') }}</option>
+            <option value="types">{{ t('scout.product.pageTypes') }}</option>
+          </select>
+        </label>
+        <label
+          v-if="form.extractionMode === 'filter'"
+          class="scout-input-label"
+          for="scout-extract"
+        >
+          {{ t('scout.flow.extractPrefix') }}
+          <input
+            id="scout-extract"
+            v-model="form.extractPrefix"
+            class="form-control"
+            placeholder="/item"
+          />
+        </label>
+        <template v-else>
+          <div v-for="(type, index) in form.pageTypes" :key="index" class="scout-field-rule">
+            <label class="scout-input-label" :for="`${uid}-12-${index}`"
+              >{{ t('scout.product.typeId')
+              }}<input
+                :id="`${uid}-12-${index}`"
+                :aria-label="t('scout.product.typeId')"
+                v-model="type.id"
+                class="form-control"
+            /></label>
+            <label class="scout-input-label" :for="`${uid}-13-${index}`"
+              >{{ t('scout.product.pageAction')
+              }}<select
+                :id="`${uid}-13-${index}`"
+                :aria-label="t('scout.product.pageAction')"
+                v-model="type.action"
+                class="form-select"
               >
-              <label :for="`${uid}-override-rule-${index}-${field.name}`"
-                >{{ t('scout.fieldSelector') }}
-                <input
-                  :id="`${uid}-override-rule-${index}-${field.name}`"
-                  class="form-control"
-                  :value="overrides(type)[field.name]?.selector || ''"
-                  :placeholder="field.selector"
-                  @input="setOverride(type, field.name, 'selector', $event.target.value)"
-              /></label>
-            </div>
-          </details>
+                <option value="extract">{{ t('scout.product.extract') }}</option>
+                <option value="discover">{{ t('scout.product.discover') }}</option>
+              </select></label
+            >
+            <label
+              v-for="(rule, ruleIndex) in type.match"
+              :key="ruleIndex"
+              class="scout-input-label"
+              :for="`${uid}-14-${index}-${ruleIndex}`"
+              >{{ t('scout.product.pattern') }} · {{ rule.kind
+              }}<input
+                :id="`${uid}-14-${index}-${ruleIndex}`"
+                :aria-label="t('scout.product.pattern')"
+                v-model="rule.pattern"
+                class="form-control"
+            /></label>
+            <details v-if="type.action === 'extract'">
+              <summary>{{ t('scout.product.overrides') }}</summary>
+              <div
+                v-for="field in form.fields.filter((item) => item.name)"
+                :key="field.name"
+                class="scout-input-label mt-2"
+              >
+                <strong>{{ field.name }}</strong>
+                <label :for="`${uid}-override-kind-${index}-${field.name}`"
+                  >{{ t('scout.fieldKind') }}
+                  <select
+                    :id="`${uid}-override-kind-${index}-${field.name}`"
+                    class="form-select"
+                    :value="field.typeSelectors?.get(type)?.kind || field.kind"
+                    @change="setTypeSelector(field, type, { kind: $event.target.value })"
+                  >
+                    <option value="css">CSS</option>
+                    <option value="xpath">XPath</option>
+                  </select></label
+                >
+                <label :for="`${uid}-override-rule-${index}-${field.name}`"
+                  >{{ t('scout.fieldSelector') }}
+                  <input
+                    :id="`${uid}-override-rule-${index}-${field.name}`"
+                    class="form-control"
+                    :value="field.typeSelectors?.get(type)?.selector || ''"
+                    :placeholder="field.selector"
+                    @input="setTypeSelector(field, type, { selector: $event.target.value })"
+                /></label>
+              </div>
+            </details>
+            <button
+              type="button"
+              class="btn btn-outline-secondary btn-sm mt-2"
+              :disabled="form.pageTypes.length === 1"
+              @click="form.pageTypes.splice(index, 1)"
+            >
+              {{ t('scout.product.remove') }}
+            </button>
+          </div>
           <button
             type="button"
-            class="btn btn-outline-secondary btn-sm mt-2"
-            @click="form.pageTypes.splice(index, 1)"
+            class="btn btn-outline-secondary"
+            :disabled="form.pageTypes.length >= 5"
+            @click="addPageType(form)"
           >
-            {{ t('scout.product.remove') }}
+            {{ t('scout.product.addType') }}
           </button>
-        </div>
-        <button
-          type="button"
-          class="btn btn-outline-secondary"
-          :disabled="form.pageTypes.length >= 5"
-          @click="addType"
-        >
-          {{ t('scout.product.addType') }}
-        </button>
+        </template>
       </template>
     </fieldset>
   </details>

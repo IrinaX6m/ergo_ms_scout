@@ -48,7 +48,8 @@ const kind = computed({
         }}<input
           :id="`${uid}-2`"
           :aria-label="t('scout.product.currency')"
-          v-model="field.conversion.currency"
+          :value="field.conversion.currency"
+          readonly
           class="form-control"
           :disabled="disabled" /></label
       ><label class="scout-input-label" :for="`${uid}-3`"
@@ -69,7 +70,8 @@ const kind = computed({
       }}<input
         :id="`${uid}-4`"
         :aria-label="t('scout.product.format')"
-        v-model="field.conversion.format"
+        :value="field.conversion.format"
+        readonly
         class="form-control"
         :disabled="disabled"
     /></label>

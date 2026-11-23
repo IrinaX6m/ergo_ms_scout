@@ -2,8 +2,9 @@
 export function installVisualFixture(apiClient, fixture, result) {
   const originalGet = apiClient.get
   const originalPost = apiClient.post
-  fixture.visual = { count: 0, error: 0, failed: false, defer: '', release: null }
+  fixture.visual = { count: 0, error: 0, failed: false, defer: '', release: null, redirects: {} }
   const visual = fixture.visual
+  const snapshotUrls = new Map()
   const version = 'dom-v1:' + 'a'.repeat(64)
   const nodes = Array.from({ length: 60 }, (_, index) => ({
     node_id: `n${index + 1}`,
@@ -74,12 +75,13 @@ export function installVisualFixture(apiClient, fixture, result) {
         }),
       )
     }
+    const publicId = url.split('/').at(-2)
     const data = visual.failed
       ? { status: 'failed', error: { code: 'not_html', detail: 'Fixture not HTML' } }
-      : { status: 'ready', html, tree_version: version, final_url: 'https://books.toscrape.com/' }
+      : { status: 'ready', html, tree_version: version, final_url: snapshotUrls.get(publicId) }
     return defer(
       'get',
-      visual.error ? error() : result({ public_id: `visual-${visual.count}`, ...data }),
+      visual.error ? error() : result({ public_id: publicId, ...data }),
     )
   }
   apiClient.post = async (url, body, ...args) => {
@@ -102,7 +104,9 @@ export function installVisualFixture(apiClient, fixture, result) {
     }
     if (url === 'scout/visual-snapshots/') {
       visual.count += 1
-      return defer('create', result({ public_id: `visual-${visual.count}`, status: 'loading' }))
+      const publicId = `visual-${visual.count}`
+      snapshotUrls.set(publicId, visual.redirects[body.url] || body.url)
+      return defer('create', result({ public_id: publicId, status: 'loading' }))
     }
     if (visual.error) return error()
     const record = body.record
