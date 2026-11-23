@@ -1,3 +1,4 @@
+import comparisonLocales from './comparisonLocales.js'
 import retentionLocales from './retentionLocales.js'
 import scheduleLocales from './scheduleLocales.js'
 import productLocales from './productLocales.js'
@@ -12,6 +13,7 @@ export default {
       product: productLocales.ru,
       schedule: scheduleLocales.ru,
       retention: retentionLocales.ru,
+      comparison: comparisonLocales.ru,
       visual: visualLocales.ru,
       inspector: inspectorLocales.ru,
       routes: { home: 'Сбор данных' },
@@ -149,6 +151,7 @@ export default {
       product: productLocales.en,
       schedule: scheduleLocales.en,
       retention: retentionLocales.en,
+      comparison: comparisonLocales.en,
       visual: visualLocales.en,
       inspector: inspectorLocales.en,
       routes: { home: 'Data collection' },
@@ -286,6 +289,7 @@ export default {
       product: productLocales.fr,
       schedule: scheduleLocales.fr,
       retention: retentionLocales.fr,
+      comparison: comparisonLocales.fr,
       visual: visualLocales.fr,
       inspector: inspectorLocales.fr,
       routes: { home: 'Collecte de données' },

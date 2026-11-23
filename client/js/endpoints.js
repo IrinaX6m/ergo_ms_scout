@@ -1,5 +1,6 @@
 export const scoutEndpoints = {
   health: 'scout/health/',
+  compareRuns: (id) => `scout/runs/${id}/compare/`,
   retentionPolicy: 'scout/retention/policy/',
   runRetention: (id) => `scout/runs/${id}/retention/`,
   retentionHold: (id) => `scout/runs/${id}/retention/hold/`,

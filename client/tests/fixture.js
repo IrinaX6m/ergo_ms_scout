@@ -8,6 +8,9 @@ import NotificationProvider from '@/components/NotificationProvider.vue'
 import { ensureBootLocales, i18n } from '@/i18n/index.js'
 import { initTheme } from '@/js/theme-manager.js'
 import { apiClient } from '@/js/api/manager'
+import ScoutComparisonPage from '../components/ScoutComparisonPage.vue'
+import '../styles/scout-comparison.scss'
+import { installComparisonFixture } from './comparison-fixture.js'
 import ScoutRetentionPage from '../components/ScoutRetentionPage.vue'
 import '../styles/scout-retention.scss'
 import { installRetentionFixture } from './retention-fixture.js'
@@ -229,6 +232,7 @@ const scheduleContext = reactive({
 })
 installScheduleFixture(apiClient, fixture, scheduleContext)
 installRetentionFixture(apiClient, fixture)
+installComparisonFixture(apiClient, fixture)
 window.__scoutTest = fixture
 window.addEventListener('ergo:open-user-settings', () => {
   fixture.systemOpened += 1
@@ -242,6 +246,7 @@ initTheme()
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
+    { path: '/scout/compare', component: ScoutComparisonPage },
     { path: '/scout/storage', component: ScoutRetentionPage },
     {
       path: '/schedule-test',

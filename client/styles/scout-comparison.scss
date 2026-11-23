@@ -1,0 +1,103 @@
+.scout-workflow.scout-comparison {
+  .scout-comparison-card,
+  .scout-comparison-changes > li {
+    margin: 1.25rem 0;
+  }
+  .scout-comparison-content {
+    padding: 1.25rem;
+    min-width: 0;
+  }
+  .scout-comparison-content .form-field {
+    padding-inline: 0;
+  }
+  .scout-comparison-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.8rem 0;
+  }
+  .scout-comparison-summaries,
+  .scout-comparison-values {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .scout-comparison-side {
+    min-width: 0;
+    border: 1px solid var(--ui-border);
+    padding: 1rem;
+    border-radius: var(--ui-radius-sm);
+  }
+  .scout-comparison-values {
+    margin-top: 1rem;
+  }
+  .scout-comparison-value {
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+  .scout-comparison-details,
+  .scout-comparison-counts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .scout-comparison-counts > div {
+    padding: 0.75rem;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+  }
+  dt {
+    color: var(--ui-text-muted);
+    font-weight: 400;
+    font-size: 0.875rem;
+  }
+  dd {
+    margin: 0;
+  }
+  .scout-comparison-changes {
+    list-style: none;
+    padding: 0;
+  }
+  .scout-comparison-evidence {
+    margin-top: 1rem;
+  }
+  .scout-comparison-evidence ol {
+    padding-left: 1rem;
+  }
+  .scout-comparison-evidence li {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--ui-border);
+  }
+  p,
+  code,
+  a,
+  dd,
+  dt,
+  h3 {
+    overflow-wrap: anywhere;
+  }
+  .btn {
+    white-space: normal;
+    min-height: 44px;
+  }
+  summary:focus-visible {
+    outline: 2px solid var(--ui-accent);
+  }
+  @media (max-width: 700px) {
+    .scout-comparison-summaries,
+    .scout-comparison-values,
+    .scout-comparison-counts,
+    .scout-comparison-details {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .scout-comparison-content {
+      padding: 0.85rem;
+    }
+    .scout-comparison-buttons .btn {
+      width: 100%;
+    }
+    .scout-header {
+      display: block;
+    }
+  }
+}
