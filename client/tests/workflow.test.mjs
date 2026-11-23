@@ -131,3 +131,27 @@ test('visual acceptance is invalidated by source, card and field changes', () =>
   ])
     assert.notEqual(visualPlanStamp({ ...form, ...changes }), stamp)
 })
+
+
+test('advanced plan options preserve proxy, page types and explicit identity', async () => {
+  const {optionForm, optionPayload, crawlOptions} = await import('../js/planOptions.js')
+  const plan = {proxy_profile_revision_public_id:'proxy-v1', identity:{kind:'field',namespace:'catalog',field:'id'},crawl:{mode:'site',page_types:[{id:'product',action:'extract',match:[{kind:'contains',pattern:'item'}],selectors:{title:{kind:'css',selector:'h2'}}}],sitemap_url:'https://example.org/sitemap.xml',sitemap_from_robots:true}}
+  const form = {...optionForm(plan),crawlMode:'site'}
+  assert.equal(optionPayload(form).proxy_profile_revision_public_id,'proxy-v1')
+  assert.deepEqual(crawlOptions(form).page_types,plan.crawl.page_types)
+  assert.equal(crawlOptions(form).sitemap_from_robots,true)
+  assert.deepEqual(crawlOptions({...form,crawlMode:'pages'}),{})
+  assert.deepEqual(optionPayload({...form,proxyRevision:'',identityKind:''}),{proxy_profile_revision_public_id:null})
+})
+test('typed values preserve exact amounts, zero, dates and invalid raw text', () => {
+  assert.equal(displayValue({typed:{type:'integer',status:'ok',value:0}},'missing'),'0')
+  assert.equal(displayValue({typed:{type:'money',status:'ok',value:{amount:'1234.50',currency:'RUB'}}},'missing'),'1234.50 RUB')
+  assert.equal(displayValue({normalized:'31.02.2026',typed:{type:'date',status:'invalid',value:null,error:{code:'invalid_date'}}},'missing'),'31.02.2026')
+  assert.equal(displayValue({typed:{type:'date',status:'ok',value:'2026-11-06'}},'missing'),'2026-11-06')
+})
+test('product copy has matching translation keys', async () => {
+  const {default: locales} = await import('../js/productLocales.js')
+  const keys = object => Object.entries(object).flatMap(([key,value])=> typeof value === 'object' ? keys(value).map(child=>key+'.'+child) : [key]).sort()
+  assert.deepEqual(keys(locales.ru),keys(locales.en))
+  assert.deepEqual(keys(locales.ru),keys(locales.fr))
+})

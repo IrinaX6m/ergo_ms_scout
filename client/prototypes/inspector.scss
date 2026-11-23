@@ -196,3 +196,154 @@
     }
   }
 }
+.scout-workflow .scout-inspector-prototype {
+  padding-bottom: 12rem;
+  .scout-visual-layout {
+    grid-template-columns: var(--scout-tree-width, 240px) 10px minmax(0, 1fr) 10px var(
+        --scout-field-width,
+        340px
+      );
+    gap: 0.5rem;
+  }
+  .scout-prototype-tabs,
+  .scout-prototype-tools {
+    grid-column: 1 / -1;
+  }
+  .scout-prototype-tabs {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--ui-surface);
+    padding: 0.5rem;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+  }
+  .scout-prototype-tabs button {
+    flex: 1;
+    min-width: 0;
+    border-bottom-width: 3px;
+  }
+  .scout-prototype-tabs small {
+    display: block;
+    font-size: 0.75rem;
+  }
+  .scout-prototype-tabs [aria-selected='true'] {
+    border-color: var(--ui-accent);
+    background: var(--ui-accent-soft);
+    color: var(--ui-text);
+  }
+  .scout-resizer {
+    width: 10px;
+    min-height: 30rem;
+    cursor: col-resize;
+    touch-action: none;
+    border-inline: 1px solid var(--ui-border);
+  }
+  .scout-resizer:focus-visible {
+    outline: 2px solid var(--ui-accent);
+  }
+  .scout-visual-document,
+  .scout-visual-rules {
+    min-width: 0;
+    scroll-margin-block: 7rem 12rem;
+  }
+  .scout-inspector-actions {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+    background: var(--ui-surface);
+    border-top: 1px solid var(--ui-border);
+  }
+  .scout-inspector-action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .scout-inspector-action-buttons .btn {
+    min-height: 44px;
+  }
+  .scout-visual-rules input {
+    scroll-margin-block: 7rem 14rem;
+  }
+  &[data-tree='false'] .scout-visual-layout {
+    grid-template-columns: minmax(0, 1fr) 10px var(--scout-field-width, 340px);
+  }
+  &[data-inspector='false'] .scout-visual-layout {
+    grid-template-columns: var(--scout-tree-width, 240px) 10px minmax(0, 1fr);
+  }
+  &[data-tree='false'][data-inspector='false'] .scout-visual-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  &[data-compact='false'] .scout-prototype-tree,
+  &[data-compact='false'] .scout-visual-rules,
+  &[data-compact='false'] .scout-visual-document {
+    display: block;
+  }
+  &[data-compact='false'][data-tree='false'] .scout-prototype-tree,
+  &[data-compact='false'][data-inspector='false'] .scout-visual-rules {
+    display: none;
+  }
+  &[data-compact='true'] {
+    .scout-visual-layout,
+    &[data-tree] .scout-visual-layout,
+    &[data-inspector] .scout-visual-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .scout-prototype-tools,
+    .scout-prototype-tree,
+    .scout-visual-rules,
+    .scout-visual-document {
+      display: none;
+    }
+    &[data-prototype-tab='tree'] .scout-prototype-tree,
+    &[data-prototype-tab='field'] .scout-visual-rules,
+    &[data-prototype-tab='page'] .scout-visual-document {
+      display: block;
+    }
+  }
+  @media (max-width: 600px) {
+    padding-bottom: 16rem;
+    .scout-prototype-tabs button {
+      padding-inline: 0.25rem;
+      font-size: 0.8125rem;
+    }
+    .scout-prototype-tabs small {
+      font-size: 0.6875rem;
+    }
+    .scout-inspector-actions {
+      padding: 0.75rem;
+    }
+    .scout-inspector-action-buttons {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .scout-inspector-action-buttons .btn-primary {
+      grid-column: 1 / -1;
+    }
+  }
+}
+
+.scout-workspace--visual .scout-main {
+  padding-bottom: 14rem;
+}
+
+.scout-workflow .scout-inspector-prototype {
+  .scout-inspector-actions {
+    inset-inline-start: var(--scout-action-left, 0px);
+    inset-inline-end: var(--scout-action-right, 0px);
+  }
+  .scout-prototype-tabs button {
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+}

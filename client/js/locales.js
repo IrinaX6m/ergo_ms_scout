@@ -1,3 +1,4 @@
+import productLocales from './productLocales.js'
 import workspaceLocales from './workspaceLocales.js'
 import visualLocales from './visualLocales.js'
 import inspectorLocales from '../prototypes/inspectorLocales.js'
@@ -6,6 +7,7 @@ export default {
   ru: {
     scout: {
       workspace: workspaceLocales.ru,
+      product: productLocales.ru,
       visual: visualLocales.ru,
       inspector: inspectorLocales.ru,
       routes: { home: 'Сбор данных' },
@@ -21,7 +23,8 @@ export default {
       scopePage: 'На всей странице',
       scopeRecord: 'Внутри карточки',
       recordSelector: 'Селектор карточки',
-      recordHint: 'Пустой селектор карточки даёт одну запись на страницу. Селектор поля карточки ищется внутри неё, а не по всей странице.',
+      recordHint:
+        'Пустой селектор карточки даёт одну запись на страницу. Селектор поля карточки ищется внутри неё, а не по всей странице.',
       dirty: 'План в форме ещё не сохранён.',
       addField: 'Добавить поле',
       removeField: 'Убрать поле',
@@ -47,7 +50,8 @@ export default {
         collect: 'Сбор',
         result: 'Результат',
         checkPage: 'Проверить страницу',
-        checkFailed: 'Не удалось подготовить предпросмотр. Форма сохранена: исправьте правила и проверьте страницу снова.',
+        checkFailed:
+          'Не удалось подготовить предпросмотр. Форма сохранена: исправьте правила и проверьте страницу снова.',
         preparing: 'Готовим предпросмотр',
         preparingLead: 'Проверяем страницу',
         confirmStart: 'Подтвердить и начать сбор',
@@ -87,9 +91,12 @@ export default {
         fetchDelay: 'Пауза между началами загрузок, мс',
         parallelFetch: 'Одновременные загрузки',
         previewPages: 'Потолок страниц предпросмотра',
-        frontierLine: 'Ожидает {queued}, в работе {active}, готово {done}, пропущено {skipped}, ошибок {failed}',
-        crawlBounds: 'Обход: {hosts}. Глубина до {depth}, потолок {pages} страниц. Предпросмотр не запускает обход.',
-        crawlBudget: 'Бюджет: {seconds} с, {bytes} байт HTML, {frontier} адресов. Параллельно {parallel}, пауза {delay} мс.',
+        frontierLine:
+          'Ожидает {queued}, в работе {active}, готово {done}, пропущено {skipped}, ошибок {failed}',
+        crawlBounds:
+          'Обход: {hosts}. Глубина до {depth}, потолок {pages} страниц. Предпросмотр не запускает обход.',
+        crawlBudget:
+          'Бюджет: {seconds} с, {bytes} байт HTML, {frontier} адресов. Параллельно {parallel}, пауза {delay} мс.',
         crawlFilters: 'Посещать: {visit}. Извлекать: {extract}.',
         pausingLead: 'Завершаем текущие операции перед паузой',
         cancellingLead: 'Отменяем сбор',
@@ -112,7 +119,12 @@ export default {
         csv: 'CSV',
       },
       fields: { css: 'CSS', xpath: 'XPath' },
-      stopReasons: { max_pages: 'Достигнут потолок страниц; результат частичный.', frontier: 'Достигнут лимит очереди адресов; результат частичный.', time: 'Истёк лимит времени; результат частичный.', bytes: 'Достигнут лимит объёма HTML; результат частичный.' },
+      stopReasons: {
+        max_pages: 'Достигнут потолок страниц; результат частичный.',
+        frontier: 'Достигнут лимит очереди адресов; результат частичный.',
+        time: 'Истёк лимит времени; результат частичный.',
+        bytes: 'Достигнут лимит объёма HTML; результат частичный.',
+      },
       statuses: {
         exploring: 'Загрузка страницы',
         awaiting_confirmation: 'Ждёт подтверждения',
@@ -130,6 +142,7 @@ export default {
   en: {
     scout: {
       workspace: workspaceLocales.en,
+      product: productLocales.en,
       visual: visualLocales.en,
       inspector: inspectorLocales.en,
       routes: { home: 'Data collection' },
@@ -145,7 +158,8 @@ export default {
       scopePage: 'On the whole page',
       scopeRecord: 'Inside the card',
       recordSelector: 'Card selector',
-      recordHint: 'An empty card selector yields one record per page. A card field is read inside that card.',
+      recordHint:
+        'An empty card selector yields one record per page. A card field is read inside that card.',
       dirty: 'The form has unsaved changes.',
       addField: 'Add field',
       removeField: 'Remove field',
@@ -171,7 +185,8 @@ export default {
         collect: 'Collection',
         result: 'Result',
         checkPage: 'Check page',
-        checkFailed: 'The preview was not prepared. The form is saved: fix the rules and check the page again.',
+        checkFailed:
+          'The preview was not prepared. The form is saved: fix the rules and check the page again.',
         preparing: 'Preparing the preview',
         preparingLead: 'Checking the page',
         confirmStart: 'Confirm and start collection',
@@ -211,9 +226,12 @@ export default {
         fetchDelay: 'Delay between fetch starts, ms',
         parallelFetch: 'Concurrent fetches',
         previewPages: 'Preview page ceiling',
-        frontierLine: 'Waiting {queued}, active {active}, done {done}, skipped {skipped}, errors {failed}',
-        crawlBounds: 'Crawl: {hosts}. Depth up to {depth}, ceiling {pages} pages. Preview does not start crawling.',
-        crawlBudget: 'Budget: {seconds} s, {bytes} HTML bytes, {frontier} URLs. Concurrency {parallel}, delay {delay} ms.',
+        frontierLine:
+          'Waiting {queued}, active {active}, done {done}, skipped {skipped}, errors {failed}',
+        crawlBounds:
+          'Crawl: {hosts}. Depth up to {depth}, ceiling {pages} pages. Preview does not start crawling.',
+        crawlBudget:
+          'Budget: {seconds} s, {bytes} HTML bytes, {frontier} URLs. Concurrency {parallel}, delay {delay} ms.',
         crawlFilters: 'Visit: {visit}. Extract: {extract}.',
         pausingLead: 'Finishing current operations before pause',
         cancellingLead: 'Cancelling collection',
@@ -236,7 +254,12 @@ export default {
         csv: 'CSV',
       },
       fields: { css: 'CSS', xpath: 'XPath' },
-      stopReasons: { max_pages: 'Page ceiling reached; results are partial.', frontier: 'URL frontier limit reached; results are partial.', time: 'Time limit reached; results are partial.', bytes: 'HTML volume limit reached; results are partial.' },
+      stopReasons: {
+        max_pages: 'Page ceiling reached; results are partial.',
+        frontier: 'URL frontier limit reached; results are partial.',
+        time: 'Time limit reached; results are partial.',
+        bytes: 'HTML volume limit reached; results are partial.',
+      },
       statuses: {
         exploring: 'Loading the page',
         awaiting_confirmation: 'Waiting for confirmation',
@@ -254,6 +277,7 @@ export default {
   fr: {
     scout: {
       workspace: workspaceLocales.fr,
+      product: productLocales.fr,
       visual: visualLocales.fr,
       inspector: inspectorLocales.fr,
       routes: { home: 'Collecte de données' },
@@ -269,7 +293,8 @@ export default {
       scopePage: 'Sur toute la page',
       scopeRecord: 'Dans la fiche',
       recordSelector: 'Sélecteur de fiche',
-      recordHint: 'Un sélecteur de fiche vide donne un enregistrement par page. Le champ de fiche est lu à l’intérieur de celle-ci.',
+      recordHint:
+        'Un sélecteur de fiche vide donne un enregistrement par page. Le champ de fiche est lu à l’intérieur de celle-ci.',
       dirty: 'Le formulaire a des modifications non enregistrées.',
       addField: 'Ajouter un champ',
       removeField: 'Retirer le champ',
@@ -295,7 +320,8 @@ export default {
         collect: 'Collecte',
         result: 'Résultat',
         checkPage: 'Vérifier la page',
-        checkFailed: 'L’aperçu n’a pas été préparé. Le formulaire est enregistré : corrigez les règles et vérifiez la page à nouveau.',
+        checkFailed:
+          'L’aperçu n’a pas été préparé. Le formulaire est enregistré : corrigez les règles et vérifiez la page à nouveau.',
         preparing: 'Préparation de l’aperçu',
         preparingLead: 'Vérification de la page',
         confirmStart: 'Confirmer et démarrer',
@@ -305,13 +331,15 @@ export default {
         oneRecord: 'Un enregistrement par page',
         manyCards: 'Plusieurs fiches',
         cardRowHint: 'Une fiche correspond à une ligne de résultat.',
-        manyHint: 'Par exemple, plusieurs caractéristiques d’un produit. Ce n’est pas le nombre de lignes.',
+        manyHint:
+          'Par exemple, plusieurs caractéristiques d’un produit. Ce n’est pas le nombre de lignes.',
         rules: 'Règles d’extraction',
         optionalTitle: 'Titre, pour distinguer la tâche',
         notFound: 'Introuvable',
         previewReady: 'Aperçu prêt',
         previewEmpty: 'L’aperçu est vide. Aucune fiche ou aucun champ trouvé. Corrigez les règles.',
-        resultEmpty: 'La collecte n’a donné aucune ligne. Corrigez les règles et vérifiez la page à nouveau.',
+        resultEmpty:
+          'La collecte n’a donné aucune ligne. Corrigez les règles et vérifiez la page à nouveau.',
         sample: '{shown} sur {total} affichés',
         gaps: 'Valeurs manquantes : {count}',
         planLead: 'La page {url} sera traitée. Le résultat contiendra : {fields}.',
@@ -335,9 +363,12 @@ export default {
         fetchDelay: 'Délai entre les débuts des chargements, ms',
         parallelFetch: 'Chargements simultanés',
         previewPages: 'Plafond des pages d’aperçu',
-        frontierLine: 'En attente {queued}, actives {active}, terminées {done}, ignorées {skipped}, erreurs {failed}',
-        crawlBounds: 'Parcours : {hosts}. Profondeur {depth}, plafond {pages} pages. L’aperçu ne lance pas le parcours.',
-        crawlBudget: 'Budget : {seconds} s, {bytes} octets HTML, {frontier} URL. Simultanéité {parallel}, délai {delay} ms.',
+        frontierLine:
+          'En attente {queued}, actives {active}, terminées {done}, ignorées {skipped}, erreurs {failed}',
+        crawlBounds:
+          'Parcours : {hosts}. Profondeur {depth}, plafond {pages} pages. L’aperçu ne lance pas le parcours.',
+        crawlBudget:
+          'Budget : {seconds} s, {bytes} octets HTML, {frontier} URL. Simultanéité {parallel}, délai {delay} ms.',
         crawlFilters: 'Visiter : {visit}. Extraire : {extract}.',
         pausingLead: 'Fin des opérations en cours avant la pause',
         cancellingLead: 'Annulation de la collecte',
@@ -360,7 +391,12 @@ export default {
         csv: 'CSV',
       },
       fields: { css: 'CSS', xpath: 'XPath' },
-      stopReasons: { max_pages: 'Plafond de pages atteint ; résultat partiel.', frontier: 'Limite des URL atteinte ; résultat partiel.', time: 'Limite de temps atteinte ; résultat partiel.', bytes: 'Limite du volume HTML atteinte ; résultat partiel.' },
+      stopReasons: {
+        max_pages: 'Plafond de pages atteint ; résultat partiel.',
+        frontier: 'Limite des URL atteinte ; résultat partiel.',
+        time: 'Limite de temps atteinte ; résultat partiel.',
+        bytes: 'Limite du volume HTML atteinte ; résultat partiel.',
+      },
       statuses: {
         exploring: 'Chargement de la page',
         awaiting_confirmation: 'En attente de confirmation',

@@ -32,9 +32,6 @@ const modes = [
         <span class="scout-mode__description">{{
           t(`scout.workspace.modes.${item.id}.description`)
         }}</span>
-        <span v-if="item.id === 'ai'" class="scout-availability">{{
-          t('scout.workspace.notAvailable')
-        }}</span>
       </span>
       <Check v-if="mode === item.id" :size="18" class="scout-mode__check" aria-hidden="true" />
       <span v-else class="scout-mode__number" aria-hidden="true">{{ index + 1 }}</span>

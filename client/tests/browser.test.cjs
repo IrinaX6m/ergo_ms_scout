@@ -40,6 +40,7 @@ async function main() {
   try {
     await require('./inspector-browser.cjs')(browser, output)
     await require('./visual-browser.cjs')(browser, output)
+    await require('./product-browser.cjs')(browser, output)
     page = await browser.newPage({ viewport: { width: 1440, height: 1100 } })
     const errors = []
     page.on('pageerror', (error) => errors.push(error.message))
@@ -71,11 +72,11 @@ async function main() {
     await ui.getByRole('heading', { name: 'Как подготовим задание?' }).waitFor()
     await checkWidths('modes')
 
-    // Unsupported modes must not send made-up API requests, and must retain the source.
+    // Switching from an untouched AI form to manual keeps the source without calling the model.
     await ui.locator('.scout-mode').nth(2).click()
     await ui.getByRole('button', { name: 'Далее: источник и правила' }).click()
-    await ui.locator('#scout-mode-source').fill('https://events.example/list')
-    await ui.locator('#scout-request').fill('Собери названия мероприятий')
+    await ui.getByLabel('URL примера').fill('https://events.example/list')
+    await ui.locator('#scout-goal').fill('Собери названия мероприятий')
     await ui.getByRole('button', { name: 'Перейти к ручным правилам' }).click()
     assert.equal(await ui.locator('#scout-url').inputValue(), 'https://events.example/list')
     assert.equal(await page.evaluate(() => window.__scoutTest.calls.length), 0)
@@ -146,10 +147,16 @@ async function main() {
     assert.deepEqual(
       await page.evaluate(() =>
         window.__scoutTest.calls
-          .filter(([method, url, params]) => method === 'get' && url.endsWith('/records/') && params.order !== 'recent')
+          .filter(
+            ([method, url, params]) =>
+              method === 'get' && url.endsWith('/records/') && params.order !== 'recent',
+          )
           .map(([, , params]) => params),
       ),
-      [{ limit: 200 }, { limit: 200, cursor: 'record-200' }],
+      [
+        { limit: 200, value_format: 'typed_v1' },
+        { limit: 200, cursor: 'record-200', value_format: 'typed_v1' },
+      ],
     )
     assert.equal(
       await ui.getByRole('button', { name: 'Происхождение поля «count»: 0', exact: true }).count(),
@@ -201,7 +208,14 @@ async function main() {
         seed_urls: ['https://events.example/a', 'https://events.example/b'],
         fields: [
           ...fixture.job.revision.fields,
-          { name: 'count', kind: 'css', selector: '.count', scope: 'page', many: false, conversion: { type: 'integer' } },
+          {
+            name: 'count',
+            kind: 'css',
+            selector: '.count',
+            scope: 'page',
+            many: false,
+            conversion: { type: 'integer' },
+          },
         ],
         identity: { kind: 'sku', namespace: 'events', field: 'title' },
         proxy_profile_revision_public_id: '66666666-6666-4666-8666-666666666666',
@@ -274,14 +288,18 @@ async function main() {
     })
     const prepare = ui.getByRole('button', { name: 'Получить предпросмотр', exact: true })
     await prepare.click()
-    await page.waitForFunction(() => window.__scoutTest.calls.some(([, , params]) => params?.summary === 1))
+    await page.waitForFunction(() =>
+      window.__scoutTest.calls.some(([, , params]) => params?.summary === 1),
+    )
     await page.evaluate(() => {
       window.__scoutTest.setStatus('awaiting_confirmation')
       window.__scoutTest.deferPreview = false
     })
     await ui.getByRole('button', { name: 'К подтверждению', exact: true }).waitFor()
     assert.equal(
-      await page.evaluate(() => window.__scoutTest.calls.filter(([method]) => method === 'patch').length),
+      await page.evaluate(
+        () => window.__scoutTest.calls.filter(([method]) => method === 'patch').length,
+      ),
       0,
     )
 
@@ -290,7 +308,9 @@ async function main() {
     await ui.locator('#scout-visit').fill('featured-updated')
     await prepare.click()
     await ui.getByRole('button', { name: 'К подтверждению', exact: true }).waitFor()
-    const changed = await page.evaluate(() => window.__scoutTest.calls.find(([method]) => method === 'patch')[2])
+    const changed = await page.evaluate(
+      () => window.__scoutTest.calls.find(([method]) => method === 'patch')[2],
+    )
     assert.deepEqual(changed.seed_urls, ['https://events.example/a', 'https://events.example/b'])
     assert.deepEqual(changed.crawl.visit, [
       { kind: 'contains', pattern: 'featured-updated' },
@@ -300,7 +320,10 @@ async function main() {
       { kind: 'prefix', pattern: 'https://events.example/a' },
       { kind: 'contains', pattern: 'ticket' },
     ])
-    assert.deepEqual(changed.crawl.preview_urls, ['https://events.example/sample-a', 'https://events.example/sample-b'])
+    assert.deepEqual(changed.crawl.preview_urls, [
+      'https://events.example/sample-a',
+      'https://events.example/sample-b',
+    ])
     assert.deepEqual(changed.crawl.drop_query, ['tracking_id'])
     assert.equal(changed.crawl.sitemap_url, 'https://events.example/sitemap.xml')
     assert.deepEqual(changed.fields[1].conversion, { type: 'integer' })
@@ -319,21 +342,25 @@ async function main() {
     })
     await page.waitForFunction(() => window.__scoutTest.releaseRecords !== null)
     assert.equal(await ui.getAttribute('aria-busy'), 'true')
-    await page.waitForFunction(() => window.__scoutTest.calls.some(([, , params]) => params?.summary === 1))
+    await page.waitForFunction(() =>
+      window.__scoutTest.calls.some(([, , params]) => params?.summary === 1),
+    )
     assert.deepEqual(
       await page.evaluate(() =>
         window.__scoutTest.calls
           .filter(([method, url]) => method === 'get' && url.endsWith('/records/'))
           .map(([, , params]) => params),
       ),
-      [{ limit: 20, order: 'recent' }],
+      [{ limit: 20, order: 'recent', value_format: 'typed_v1' }],
     )
     await ui.getByRole('button', { name: 'Пауза', exact: true }).click()
     await ui.getByRole('button', { name: 'Продолжить', exact: true }).waitFor()
     await page.evaluate(() => window.__scoutTest.releaseRecords())
     await ui.getByText('Последние 20 из 25', { exact: true }).waitFor()
     assert.equal(
-      await ui.getByRole('button', { name: 'Происхождение поля «title»: Событие 1', exact: true }).count(),
+      await ui
+        .getByRole('button', { name: 'Происхождение поля «title»: Событие 1', exact: true })
+        .count(),
       0,
     )
     await page.waitForFunction(

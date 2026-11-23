@@ -76,7 +76,13 @@ apiClient.get = async (url, params = {}) => {
   if (url.startsWith('scout/jobs/')) return result(fixture.job)
   if (url.startsWith('scout/runs/')) {
     if (!params.summary) return result(fixture.run)
-    const { journal: _journal, events: _events, tasks: _tasks, preview: _preview, ...summary } = fixture.run
+    const {
+      journal: _journal,
+      events: _events,
+      tasks: _tasks,
+      preview: _preview,
+      ...summary
+    } = fixture.run
     return result({ ...summary, progress: { fetched: 1, extracted: 0, errors: 0 } })
   }
   return result({})
@@ -128,6 +134,74 @@ apiClient.post = async (url, body) => {
   return result(fixture.run || {})
 }
 installVisualFixture(apiClient, fixture, result)
+fixture.suggestionError = false
+const productPost = apiClient.post
+const productGet = apiClient.get
+apiClient.get = async (url, params = {}) => {
+  if (url === 'scout/proxy-profiles/')
+    return result({
+      profiles: [
+        {
+          public_id: 'proxy-1',
+          revision_public_id: 'proxy-v1',
+          ip: '192.0.2.10',
+          port: 8443,
+          auth_type: 'none',
+          credentials_configured: false,
+        },
+      ],
+    })
+  return productGet(url, params)
+}
+apiClient.post = async (url, body) => {
+  if (url === 'scout/plan-suggestions/') {
+    fixture.calls.push(['post', url, clone(body)])
+    if (fixture.suggestionError)
+      return {
+        success: false,
+        status: 503,
+        data: { code: 'model_unavailable', detail: 'Модель временно недоступна' },
+      }
+    if (fixture.deferSuggestion)
+      return new Promise((resolve) => {
+        fixture.releaseSuggestion = () =>
+          resolve(
+            result({
+              draft: {
+                seed_urls: ['https://late.example'],
+                fields: [
+                  { name: 'late', kind: 'css', selector: '.late', scope: 'page', many: false },
+                ],
+                crawl: { mode: 'pages' },
+              },
+            }),
+          )
+      })
+    return result({
+      draft: {
+        seed_urls: ['https://books.toscrape.com/'],
+        record: { kind: 'css', selector: 'article' },
+        fields: [
+          { name: 'title', kind: 'css', selector: 'h3', scope: 'record', many: false },
+          {
+            name: 'price',
+            kind: 'css',
+            selector: '.price_color',
+            scope: 'record',
+            many: false,
+            conversion: { type: 'money', currency: 'RUB', decimal_separator: ',' },
+          },
+        ],
+        crawl: { mode: 'pages' },
+      },
+    })
+  }
+  if (url.startsWith('scout/proxy-profiles/')) {
+    fixture.calls.push(['post', url, clone(body)])
+    return result({ status: 'ready' })
+  }
+  return productPost(url, body)
+}
 window.__scoutTest = fixture
 window.addEventListener('ergo:open-user-settings', () => {
   fixture.systemOpened += 1
@@ -142,7 +216,11 @@ const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: '/ux-004', component: ScoutUX004 },
-    { path: '/:pathMatch(.*)*', component: ScoutPage },
+    { path: '/product', component: ScoutPage },
+    {
+      path: '/:pathMatch(.*)*',
+      component: { render: () => h(ScoutPage, { inspectorEnabled: false }) },
+    },
   ],
 })
 const app = createApp({ render: () => h('div', [h(RouterView), h(NotificationProvider)]) })

@@ -1,8 +1,7 @@
 <script setup>
-import { computed, ref } from 'vue'
-import { ArrowLeft, ArrowRight, Download, Settings2, Sparkles } from '@lucide/vue'
+import { computed } from 'vue'
+import { ArrowLeft, ArrowRight, Download, Settings2 } from '@lucide/vue'
 import FormCard from '@/components/FormCard.vue'
-import FormField from '@/components/FormField.vue'
 import SelectBox from '@/components/SelectBox.vue'
 import SpinnerLoading from '@/components/SpinnerLoading.vue'
 import ScoutStepRail from './ScoutStepRail.vue'
@@ -15,13 +14,17 @@ import ScoutModePicker from './ScoutModePicker.vue'
 import ScoutPlanSummary from './ScoutPlanSummary.vue'
 import ScoutRecordsTable from './ScoutRecordsTable.vue'
 import ScoutRuleEditor from './ScoutRuleEditor.vue'
+import ScoutPlanOptions from './ScoutPlanOptions.vue'
+import ScoutAiEditor from './ScoutAiEditor.vue'
 import ScoutVisualEditor from './ScoutVisualEditor.vue'
 import ScoutCrawlSummary from './ScoutCrawlSummary.vue'
 
-defineProps({ inspectorPrototype: Boolean })
+defineProps({ inspectorPrototype: Boolean, inspectorEnabled: { type: Boolean, default: true } })
 const { t } = useAppI18n()
 const {
   form,
+  applySuggestion,
+  recordsLoading,
   visualPlanValid,
   errors,
   run,
@@ -59,7 +62,6 @@ const {
   addField,
   removeField,
 } = useScoutWorkflow()
-const modelRequest = ref('')
 const { preference } = useThemeMode()
 const selectedTheme = computed({ get: () => preference.value, set: applyThemeModePreference })
 const themeOptions = computed(() =>
@@ -240,36 +242,20 @@ function openSystemSettings() {
           <ScoutVisualEditor
             v-else-if="mode === 'visual'"
             v-model="form"
-            :inspector-prototype="inspectorPrototype"
+            :inspector-prototype="inspectorPrototype || inspectorEnabled"
             :disabled="loading"
             @valid="visualPlanValid = $event"
             @preview="checkPage"
             @manual="mode = 'manual'"
           />
-          <FormCard v-else>
-            <FormField :label="t('scout.url')" label-for="scout-mode-source"
-              ><input id="scout-mode-source" v-model="form.url" class="form-control" type="url"
-            /></FormField>
-            <FormField
-              v-if="mode === 'ai'"
-              :label="t('scout.workspace.request')"
-              label-for="scout-request"
-              :hint="t('scout.workspace.requestHint')"
-            >
-              <textarea id="scout-request" v-model="modelRequest" class="form-control" rows="4" />
-            </FormField>
-            <div class="scout-panel-content scout-unavailable" role="status">
-              <Sparkles :size="24" aria-hidden="true" />
-              <h2 class="h5">{{ t('scout.workspace.notAvailable') }}</h2>
-              <p>{{ t(`scout.workspace.modes.${mode}.unavailable`) }}</p>
-              <p class="scout-muted small mb-0">{{ t('scout.workspace.draftPreserved') }}</p>
-            </div>
-            <template #footer
-              ><button type="button" class="btn btn-primary" @click="mode = 'manual'">
-                {{ t('scout.workspace.useManual')
-                }}<ArrowRight :size="17" aria-hidden="true" /></button
-            ></template>
-          </FormCard>
+          <ScoutAiEditor
+            v-else
+            v-model="form"
+            :disabled="loading"
+            @apply="applySuggestion"
+            @manual="mode = 'manual'"
+          />
+          <ScoutPlanOptions v-model="form" :disabled="loading" />
         </section>
         <FormCard v-else-if="stage === 'preview'">
           <div class="scout-panel-content">
@@ -409,7 +395,9 @@ function openSystemSettings() {
             </p>
             <template v-else
               ><h3 class="h6 mt-4">
-                {{ t('scout.flow.recent', { shown: shownRecords.length, total: progress.records }) }}
+                {{
+                  t('scout.flow.recent', { shown: shownRecords.length, total: progress.records })
+                }}
               </h3>
               <ScoutRecordsTable :records="shownRecords" preview
             /></template>
@@ -457,7 +445,11 @@ function openSystemSettings() {
             <p class="scout-muted">
               {{ t('scout.flow.gotRecords', { records: run?.record_count || 0 }) }}
             </p>
-            <p v-if="!records.length && !recordsError" class="scout-muted">
+            <p v-if="recordsLoading" role="status">{{ t('scout.product.loadingRecords') }}</p>
+            <p class="small scout-muted">
+              {{ t('scout.product.loaded', { count: records.length }) }}
+            </p>
+            <p v-if="!records.length && !recordsError && !recordsLoading" class="scout-muted">
               {{ t('scout.flow.resultEmpty') }}
             </p>
             <ScoutRecordsTable v-if="records.length" :records="records" />

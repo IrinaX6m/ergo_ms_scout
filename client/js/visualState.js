@@ -1,6 +1,7 @@
 export function visualPlanStamp(form) {
   return JSON.stringify({
     url: form.url.trim(),
+    proxyRevision: form.proxyRevision || null,
     recordMode: form.recordMode,
     recordKind: form.recordKind,
     recordSelector: form.recordSelector,

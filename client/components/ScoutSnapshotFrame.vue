@@ -148,7 +148,7 @@ watch(
     await nextTick()
     frame.value?.contentDocument
       ?.querySelector(`[data-scout-node="${id}"]`)
-      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      ?.scrollIntoView({ block: 'center', inline: 'nearest' })
     update()
   },
 )

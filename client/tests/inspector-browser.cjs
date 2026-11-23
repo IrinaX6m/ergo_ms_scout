@@ -18,24 +18,38 @@ module.exports = async (browser, output) => {
     const firstBranch = ui.locator('[role=treeitem][data-node=n1]')
     const secondBranch = ui.locator('[role=treeitem][data-node=n4]')
     await firstBranch.waitFor()
-    await page.evaluate(() => { window.__scoutTest.visual.defer = 'tree' })
+    await page.evaluate(() => {
+      window.__scoutTest.visual.defer = 'tree'
+    })
     await firstBranch.locator('button').click()
     await page.waitForFunction(() => !!window.__scoutTest.visual.release)
     await secondBranch.locator('button').click()
-    await page.waitForFunction(() => document.querySelector('[data-node=n4]')?.getAttribute('aria-expanded') === 'true')
+    await page.waitForFunction(
+      () => document.querySelector('[data-node=n4]')?.getAttribute('aria-expanded') === 'true',
+    )
     await page.evaluate(() => window.__scoutTest.visual.release())
     await ui.locator('[role=treeitem][data-node=n2]').waitFor()
     assert.equal(await firstBranch.getAttribute('aria-expanded'), 'true')
-    assert.equal(await secondBranch.getAttribute('aria-expanded'), 'true', 'Late first branch response collapsed the second branch')
+    assert.equal(
+      await secondBranch.getAttribute('aria-expanded'),
+      'true',
+      'Late first branch response collapsed the second branch',
+    )
 
     // A user can also collapse a branch before its children arrive.
     const thirdBranch = ui.locator('[role=treeitem][data-node=n7]')
-    await page.evaluate(() => { window.__scoutTest.visual.defer = 'tree' })
+    await page.evaluate(() => {
+      window.__scoutTest.visual.defer = 'tree'
+    })
     await thirdBranch.locator('button').click()
     await page.waitForFunction(() => !!window.__scoutTest.visual.release)
     await thirdBranch.locator('button').click()
     await page.evaluate(() => window.__scoutTest.visual.release())
-    assert.equal(await thirdBranch.getAttribute('aria-expanded'), 'false', 'Late children reopened a collapsed branch')
+    assert.equal(
+      await thirdBranch.getAttribute('aria-expanded'),
+      'false',
+      'Late children reopened a collapsed branch',
+    )
     const checks = () =>
       page.evaluate(
         () =>
@@ -55,7 +69,7 @@ module.exports = async (browser, output) => {
       .getByText('article.product_pod', { exact: true })
       .waitFor()
     assert.equal(await checks(), before)
-    await ui.getByRole('button', { name: 'Предложить и проверить правило', exact: true }).click()
+    await ui.getByRole('button', { name: 'Проверить правило', exact: true }).click()
     await ui.getByRole('button', { name: 'Принять карточку', exact: true }).click()
     await ui.locator('#scout-dom-search').fill('price_color')
     await ui.getByRole('button', { name: 'Найти', exact: true }).click()
@@ -67,7 +81,7 @@ module.exports = async (browser, output) => {
       .waitFor()
     await ui.locator('[role=treeitem][data-node=n60]').waitFor()
     await ui.locator('#scout-visual-name').fill('price')
-    await ui.getByRole('button', { name: 'Предложить и проверить правило', exact: true }).click()
+    await ui.getByRole('button', { name: 'Проверить правило', exact: true }).click()
     await ui.getByText('Совпадений в примерах: 20', { exact: true }).waitFor()
     const body = await page.evaluate(
       () =>
@@ -77,16 +91,27 @@ module.exports = async (browser, output) => {
     )
     assert.match(body.tree_version, /^dom-v1:/)
     await ui.getByRole('button', { name: 'Принять поле', exact: true }).click()
-    await ui.locator('#scout-dom-search').fill('does-not-exist')
+    await ui
+      .locator('.scout-visual-fields')
+      .getByRole('button', { name: 'Изменить', exact: true })
+      .click()
+    await ui.locator('#scout-visual-css').fill('p.price_color')
+    await ui.getByRole('button', { name: 'Проверить правило', exact: true }).click()
+    await ui.getByRole('button', { name: 'Сохранить изменения', exact: true }).click()
+    assert.equal(await ui.locator('.scout-visual-fields li').count(), 1)
+    assert.equal(await ui.locator('.scout-visual-fields code').textContent(), 'p.price_color')
+    const separator = ui.getByRole('separator').first()
+    await separator.focus()
+    const width = Number(await separator.getAttribute('aria-valuenow'))
+    await separator.press('ArrowRight')
+    assert.equal(Number(await separator.getAttribute('aria-valuenow')), width + 10) +
+      (await ui.locator('#scout-dom-search').fill('does-not-exist'))
     await ui.getByRole('button', { name: 'Найти', exact: true }).click()
     await ui.getByText('Найдено: 0. В этой порции: 0.', { exact: true }).waitFor()
     await frame.locator('p').first().click()
     await ui.getByRole('button', { name: 'Отменить выбор', exact: true }).click()
     assert.equal(await ui.locator('.scout-visual-fields li').count(), 1)
-    assert.equal(
-      await ui.getByRole('button', { name: 'Получить предпросмотр', exact: true }).isEnabled(),
-      true,
-    )
+    assert.equal(await ui.getByRole('button', { name: /Получить предпросмотр/ }).isEnabled(), true)
     await ui.locator('[role=treeitem]').first().focus()
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('Enter')
@@ -97,7 +122,7 @@ module.exports = async (browser, output) => {
         for (const tab of ['Структура', 'Поле', 'Страница'])
           await ui
             .locator('.scout-prototype-tabs')
-            .getByRole('button', { name: tab, exact: true })
+            .getByRole('tab', { name: new RegExp('^' + tab) })
             .click()
       }
       assert.ok(
@@ -122,10 +147,7 @@ module.exports = async (browser, output) => {
     })
     await frame.locator('p').first().click()
     await ui.getByRole('alert').filter({ hasText: 'Версия снимка изменилась' }).waitFor()
-    assert.equal(
-      await ui.getByRole('button', { name: 'Получить предпросмотр', exact: true }).isDisabled(),
-      true,
-    )
+    assert.equal(await ui.getByRole('button', { name: /Получить предпросмотр/ }).isDisabled(), true)
     // A late branch expansion cannot carry old node IDs into a new snapshot.
     await page.evaluate(() => {
       window.__scoutTest.visual.treeError = 0
@@ -141,9 +163,24 @@ module.exports = async (browser, output) => {
     await page.evaluate(() => window.__scoutTest.visual.release())
     assert.equal(await ui.locator('[role=treeitem]').count(), 0)
     assert.equal(await ui.locator('iframe').count(), 0)
-    console.log(
-      'UX-004 prototype passed: hover/click/check separation, API tree/search, offscreen selection, cancel, keyboard, tabs, version conflict, late response and 320–1440px.',
+    await ui.locator('.scout-visual-source button').click()
+    await frame.locator('p').first().waitFor()
+    await ui.locator('#scout-visual-page').check()
+    await ui.locator('#scout-visual-name').fill('page_price')
+    await frame.locator('p').first().click()
+    await ui.getByRole('button', { name: 'Проверить правило', exact: true }).click()
+    await ui.locator('.scout-visual-check').waitFor()
+    const single = await page.evaluate(
+      () =>
+        window.__scoutTest.calls
+          .filter((c) => c[0] === 'post' && c[1].endsWith('/check/'))
+          .at(-1)[2],
     )
+    assert.equal(single.record, null)
+    assert.equal(single.field.scope, 'page') +
+      console.log(
+        'UX-004 prototype passed: hover/click/check separation, API tree/search, offscreen selection, cancel, keyboard, tabs, version conflict, late response and 320–1440px.',
+      )
   } catch (error) {
     await page.screenshot({ path: path.join(output, 'ux004-failure.png'), fullPage: true })
     console.error(await page.locator('body').innerText())
