@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import FormCard from '@/components/FormCard.vue'
 import FormField from '@/components/FormField.vue'
 import SpinnerLoading from '@/components/SpinnerLoading.vue'
@@ -17,10 +17,133 @@ const props = defineProps({ disabled: Boolean, inspectorPrototype: Boolean })
 const emit = defineEmits(['valid', 'preview', 'manual'])
 const { t } = useAppI18n()
 const active = ref(true)
+const editor = ref(null)
+const compact = ref(false)
+const actionInset = reactive({ left: 0, right: 0 })
+function updateActionInset() {
+  const box = editor.value?.getBoundingClientRect()
+  if (!box) return
+  actionInset.left = Math.max(0, box.left)
+  actionInset.right = Math.max(0, window.innerWidth - box.right)
+}
+const widths = reactive({ tree: 240, field: 340 })
+let resizeObserver
+let dragCleanup = () => {}
+function setWidth(area, value) {
+  widths[area] = Math.max(area === 'tree' ? 210 : 300, Math.min(area === 'tree' ? 300 : 400, value))
+}
+function resizeKey(area, event) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  setWidth(
+    area,
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? 1000
+        : widths[area] + (event.key === 'ArrowRight' ? 10 : -10) * (area === 'field' ? -1 : 1),
+  )
+}
+function resizeStart(area, event) {
+  if (event.button !== 0) return
+  event.preventDefault()
+  event.currentTarget.setPointerCapture(event.pointerId)
+  dragCleanup()
+  const start = event.clientX,
+    width = widths[area]
+  const move = (e) => setWidth(area, width + (e.clientX - start) * (area === 'field' ? -1 : 1))
+  dragCleanup = () => {
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', dragCleanup)
+  }
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', dragCleanup, { once: true })
+}
+async function selectTab(tab) {
+  prototypeTab.value = tab
+  showTree.value = true
+  showInspector.value = true
+  await nextTick()
+  const panel = editor.value?.querySelector(
+    tab === 'tree'
+      ? '.scout-prototype-tree'
+      : tab === 'field'
+        ? '.scout-visual-rules'
+        : '.scout-visual-document',
+  )
+  panel?.focus({ preventScroll: true })
+  panel?.scrollIntoView({ block: 'nearest' })
+}
+function tabKey(event, index) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const tabs = ['page', 'tree', 'field']
+  const next =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? 2
+        : (index + (event.key === 'ArrowRight' ? 1 : 2)) % 3
+  prototypeTab.value = tabs[next]
+  showTree.value = true
+  showInspector.value = true
+  editor.value?.querySelectorAll('.scout-prototype-tabs button')[next]?.focus()
+}
+const manualRule = ref(false)
+const primaryLabel = computed(() =>
+  status.value === 'loading'
+    ? t('scout.visual.loading')
+    : status.value !== 'ready' || tree.invalid.value
+      ? t('scout.product.loadSnapshot')
+      : checking.value
+        ? t('scout.visual.checking')
+        : checked.value
+          ? t(
+              target.value === 'record'
+                ? 'scout.visual.acceptCard'
+                : editing.value >= 0
+                  ? 'scout.product.saveChanges'
+                  : 'scout.visual.acceptField',
+            )
+          : t('scout.product.check'),
+)
+const primaryDisabled = computed(() => {
+  if (props.disabled || status.value === 'loading' || checking.value) return true
+  if (status.value !== 'ready' || tree.invalid.value) return false
+  if (tree.loading.value) return true
+  return checked.value
+    ? !acceptable.value || (target.value === 'field' && duplicateName.value)
+    : (target.value === 'field' && (!cardReady.value || !draft.name.trim())) ||
+        (manualRule.value
+          ? !(target.value === 'record' ? recordSelector.value : draft.selector).trim()
+          : !selectedNode.value)
+})
+function primaryAction() {
+  if (status.value !== 'ready' || tree.invalid.value) {
+    load()
+    return
+  }
+  if (checked.value) accept()
+  else verify(manualRule.value ? undefined : selectedNode.value)
+}
+onMounted(() => {
+  resizeObserver = new ResizeObserver(([entry]) => {
+    compact.value = entry.contentRect.width < 1000
+    updateActionInset()
+  })
+  if (editor.value) resizeObserver.observe(editor.value)
+  window.addEventListener('resize', updateActionInset)
+})
+onUnmounted(() => {
+  resizeObserver?.disconnect()
+  window.removeEventListener('resize', updateActionInset)
+  dragCleanup()
+})
 const url = computed(() => form.value.url)
 const { snapshot, status, error, checking, load, check, invalidateCheck } = useVisualSnapshot(
   url,
   active,
+  computed(() => ({ proxy_profile_revision_public_id: form.value.proxyRevision || null })),
 )
 const target = ref(form.value.recordMode === 'cards' ? 'record' : 'field')
 const ancestors = ref([])
@@ -37,11 +160,12 @@ const tree = useInspectorTree(
 const recordSelector = ref(form.value.recordSelector || '')
 const draft = reactive({ name: 'field_1', selector: '', many: false, scope: 'page' })
 const editing = ref(-1)
+const canCancel = computed(() => editing.value >= 0 || manualRule.value || !!selectedNode.value)
 const result = ref(null)
 const checkedStamp = ref('')
 const acceptedStamp = ref('')
 const cardStamp = ref('')
-const verifiedFields = new Map()
+const verifiedFields = reactive(new Map())
 let applying = false
 const recordRule = computed(() =>
   form.value.recordMode === 'cards'
@@ -90,6 +214,50 @@ const valid = computed(
     (!props.inspectorPrototype || !tree.invalid.value) &&
     acceptedStamp.value === visualPlanStamp(form.value),
 )
+function fieldVerified(field) {
+  return (
+    status.value === 'ready' &&
+    !tree.invalid.value &&
+    cardReady.value &&
+    verifiedFields.get(JSON.stringify(form.value.fields[field.index])) === snapshot.value?.public_id
+  )
+}
+const pendingFields = computed(() => fields.value.filter((field) => !fieldVerified(field)))
+const previewHint = computed(() => {
+  if (props.disabled) return t('scout.product.previewWait')
+  if (status.value === 'loading') return t('scout.visual.loading')
+  if (tree.invalid.value || status.value === 'expired') return t('scout.product.previewReload')
+  if (status.value !== 'ready') return t('scout.product.previewLoad')
+  if (!cardReady.value) return t('scout.product.previewCard')
+  if (!fields.value.length) return t('scout.product.previewAddField')
+  if (pendingFields.value.length)
+    return t('scout.product.previewFields', {
+      names: pendingFields.value
+        .slice(0, 3)
+        .map((field) => field.name || `#${field.index + 1}`)
+        .join(', '),
+      count: pendingFields.value.length,
+    })
+  if (!valid.value) return t('scout.product.previewChanged')
+  return t('scout.product.previewReady', { count: fields.value.length })
+})
+const canReviewNext = computed(
+  () =>
+    !props.disabled &&
+    status.value === 'ready' &&
+    !tree.invalid.value &&
+    (!cardReady.value || pendingFields.value.length > 0),
+)
+async function reviewNext() {
+  if (!canReviewNext.value) return
+  if (!cardReady.value) {
+    target.value = 'record'
+    recordSelector.value = form.value.recordSelector || ''
+    manualRule.value = true
+    await selectTab('field')
+    editor.value?.querySelector('#scout-visual-record')?.focus()
+  } else if (pendingFields.value.length) await editField(pendingFields.value[0].index)
+}
 const highlighted = computed(() => [
   ...new Set([...summary.value.nodeIds, ...(selectedNode.value ? [selectedNode.value] : [])]),
 ])
@@ -179,6 +347,7 @@ function select(nodes) {
 function chooseNode(id) {
   if (props.inspectorPrototype && tree.invalid.value) return
   selectedNode.value = id
+  manualRule.value = false
   if (props.inspectorPrototype) {
     result.value = null
     checkedStamp.value = ''
@@ -221,8 +390,15 @@ function cancelSelection() {
   checkedStamp.value = ''
   invalidateCheck()
   tree.clearSelection()
-  if (editing.value >= 0) Object.assign(draft, form.value.fields[editing.value])
-  else draft.selector = ''
+  editing.value = -1
+  manualRule.value = false
+  recordSelector.value = form.value.recordSelector || ''
+  Object.assign(draft, {
+    name: `field_${fields.value.length + 1}`,
+    selector: '',
+    many: false,
+    scope: form.value.recordMode === 'cards' ? 'record' : 'page',
+  })
 }
 function accept() {
   if (!acceptable.value) return
@@ -235,13 +411,15 @@ function accept() {
     form.value.recordSelector = accepted.record.selector
     cardStamp.value = currentCardStamp.value
     acceptedStamp.value = ''
+    manualRule.value = false
     target.value = 'field'
     draft.scope = 'record'
     return
   }
   const field = { ...result.value.field }
-  const conversion = form.value.fields[editing.value]?.conversion
-  if (conversion && !field.many) field.conversion = conversion
+  const previousField = form.value.fields[editing.value]
+  if (previousField?.conversion && !field.many) field.conversion = previousField.conversion
+  if (previousField?.typeSelectors) field.typeSelectors = previousField.typeSelectors
   const duplicate = form.value.fields.findIndex(
     (item, index) => item.name === field.name && index !== editing.value,
   )
@@ -263,17 +441,7 @@ function accept() {
     )
   )
     acceptedStamp.value = visualPlanStamp(form.value)
-  result.value = null
-  checkedStamp.value = ''
-  ancestors.value = []
-  selectedNode.value = ''
-  editing.value = -1
-  Object.assign(draft, {
-    name: `field_${fields.value.length + 1}`,
-    selector: '',
-    many: false,
-    scope: form.value.recordMode === 'cards' ? 'record' : 'page',
-  })
+  cancelSelection()
 }
 const duplicateName = computed(() =>
   form.value.fields.some(
@@ -281,10 +449,15 @@ const duplicateName = computed(() =>
       field.name === draft.name.trim() && index !== editing.value && !!field.selector,
   ),
 )
-function editField(index) {
+async function editField(index) {
   target.value = 'field'
+  await nextTick()
+  cancelSelection()
   editing.value = index
   Object.assign(draft, form.value.fields[index])
+  manualRule.value = true
+  await selectTab('field')
+  editor.value?.querySelector('#scout-visual-name')?.focus()
 }
 function removeField(index) {
   editing.value = -1
@@ -306,7 +479,15 @@ function removeField(index) {
 
 <template>
   <div
+    ref="editor"
     class="scout-visual-editor"
+    :data-compact="compact"
+    :style="{
+      '--scout-tree-width': widths.tree + 'px',
+      '--scout-field-width': widths.field + 'px',
+      '--scout-action-left': actionInset.left + 'px',
+      '--scout-action-right': actionInset.right + 'px',
+    }"
     :class="{ 'scout-inspector-prototype': inspectorPrototype }"
     :data-prototype-tab="prototypeTab"
     :data-tree="showTree"
@@ -345,16 +526,23 @@ function removeField(index) {
     </div>
     <div v-if="status === 'ready'" class="scout-visual-layout">
       <template v-if="inspectorPrototype">
-        <nav class="scout-prototype-tabs" :aria-label="t('scout.inspector.views')">
+        <nav class="scout-prototype-tabs" role="tablist" :aria-label="t('scout.inspector.views')">
           <button
-            v-for="tab in ['page', 'tree', 'field']"
+            v-for="(tab, index) in ['page', 'tree', 'field']"
             :key="tab"
             type="button"
             class="btn btn-outline-secondary"
-            :aria-pressed="prototypeTab === tab"
-            @click="prototypeTab = tab"
+            :id="`scout-tab-${tab}`"
+            role="tab"
+            :aria-selected="prototypeTab === tab"
+            :aria-controls="`scout-panel-${tab}`"
+            :tabindex="prototypeTab === tab ? 0 : -1"
+            @keydown="tabKey($event, index)"
+            @click="selectTab(tab)"
           >
-            {{ t(`scout.inspector.tabs.${tab}`) }}
+            {{ t(`scout.inspector.tabs.${tab}`)
+            }}<span v-if="tab === 'field'"> · {{ fields.length }}</span
+            ><small>{{ t(`scout.product.tabHints.${tab}`) }}</small>
           </button>
         </nav>
         <div class="scout-prototype-tools">
@@ -380,9 +568,38 @@ function removeField(index) {
             {{ t('scout.visual.load') }}
           </button>
         </div>
-        <ScoutPrototypeTree :tree="tree" :selected="selectedNode" @select="chooseNode" />
+        <ScoutPrototypeTree
+          id="scout-panel-tree"
+          :tabindex="-1"
+          :role="compact ? 'tabpanel' : 'region'"
+          aria-labelledby="scout-tab-tree"
+          :tree="tree"
+          :selected="selectedNode"
+          @select="chooseNode"
+        />
+        <!-- Separator supports pointer dragging and keyboard arrows; the accessibility rule does not recognise this ARIA widget. -->
+        <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions -->
+        <div
+          v-if="!compact && showTree"
+          class="scout-resizer scout-resizer--tree"
+          role="separator"
+          tabindex="0"
+          aria-orientation="vertical"
+          :aria-label="t('scout.product.resizeTree')"
+          :aria-valuenow="widths.tree"
+          :aria-valuemin="210"
+          :aria-valuemax="300"
+          @pointerdown="resizeStart('tree', $event)"
+          @keydown="resizeKey('tree', $event)"
+        />
       </template>
-      <section class="scout-visual-document" :aria-label="t('scout.visual.snapshotTitle')">
+      <section
+        id="scout-panel-page"
+        tabindex="-1"
+        :role="inspectorPrototype && compact ? 'tabpanel' : 'region'"
+        class="scout-visual-document"
+        :aria-label="t('scout.visual.snapshotTitle')"
+      >
         <h2 class="h6">{{ t('scout.visual.snapshotTitle') }}</h2>
         <p class="scout-muted small">{{ t('scout.visual.frameHint') }}</p>
         <ScoutSnapshotFrame
@@ -409,9 +626,35 @@ function removeField(index) {
         </div>
         <p class="scout-muted small mt-2">{{ t('scout.visual.keyboard') }}</p>
       </section>
-      <section class="scout-visual-rules" :aria-label="t('scout.flow.rules')">
+      <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions -->
+      <div
+        v-if="inspectorPrototype && !compact && showInspector"
+        class="scout-resizer scout-resizer--field"
+        role="separator"
+        tabindex="0"
+        aria-orientation="vertical"
+        :aria-label="t('scout.product.resizeFields')"
+        :aria-valuenow="widths.field"
+        :aria-valuemin="300"
+        :aria-valuemax="400"
+        @pointerdown="resizeStart('field', $event)"
+        @keydown="resizeKey('field', $event)"
+      />
+      <section
+        id="scout-panel-field"
+        tabindex="-1"
+        :role="inspectorPrototype && compact ? 'tabpanel' : 'region'"
+        class="scout-visual-rules"
+        :aria-label="t('scout.flow.rules')"
+      >
         <div v-if="inspectorPrototype" class="scout-prototype-selection" aria-live="polite">
-          <h2 class="h6">{{ t('scout.inspector.inspector') }}</h2>
+          <h2 class="h6">
+            {{
+              editing >= 0
+                ? t('scout.product.editing', { name: draft.name })
+                : t('scout.inspector.inspector')
+            }}
+          </h2>
           <p v-if="!selectedNode" class="scout-muted small">
             {{ t('scout.inspector.selectHint') }}
           </p>
@@ -450,14 +693,6 @@ function removeField(index) {
               </button>
             </div>
           </template>
-          <button
-            v-if="selectedNode"
-            type="button"
-            class="btn btn-outline-secondary btn-sm mt-2"
-            @click="cancelSelection"
-          >
-            {{ t('scout.inspector.cancel') }}
-          </button>
         </div>
         <fieldset :disabled="disabled">
           <legend class="h6">{{ t('scout.workspace.recordUnit') }}</legend>
@@ -521,7 +756,11 @@ function removeField(index) {
           <template v-if="target === 'record'">
             <label class="scout-input-label" for="scout-visual-record"
               >{{ t('scout.visual.cardCss')
-              }}<input id="scout-visual-record" v-model="recordSelector" class="form-control"
+              }}<input
+                id="scout-visual-record"
+                v-model="recordSelector"
+                class="form-control"
+                @input="manualRule = true"
             /></label>
           </template>
           <template v-else>
@@ -531,7 +770,11 @@ function removeField(index) {
             /></label>
             <label class="scout-input-label mt-2" for="scout-visual-css"
               >{{ t('scout.visual.fieldCss')
-              }}<input id="scout-visual-css" v-model="draft.selector" class="form-control"
+              }}<input
+                id="scout-visual-css"
+                v-model="draft.selector"
+                class="form-control"
+                @input="manualRule = true"
             /></label>
             <label
               v-if="form.recordMode === 'cards'"
@@ -555,6 +798,7 @@ function removeField(index) {
             </p>
           </template>
           <button
+            v-if="!inspectorPrototype"
             type="button"
             class="btn btn-outline-secondary mt-3"
             :disabled="
@@ -566,21 +810,6 @@ function removeField(index) {
             @click="verify()"
           >
             {{ checking ? t('scout.visual.checking') : t('scout.visual.check') }}
-          </button>
-          <button
-            v-if="inspectorPrototype"
-            type="button"
-            class="btn btn-primary mt-3"
-            :disabled="
-              !selectedNode ||
-              checking ||
-              tree.invalid.value ||
-              tree.loading.value ||
-              (target === 'field' && !cardReady)
-            "
-            @click="verify(selectedNode)"
-          >
-            {{ t('scout.inspector.propose') }}
           </button>
           <div v-if="checked" class="scout-visual-check" aria-live="polite">
             <p class="fw-semibold">{{ t('scout.visual.rowCount', { count: result.row_count }) }}</p>
@@ -622,6 +851,7 @@ function removeField(index) {
               }}
             </p>
             <button
+              v-if="!inspectorPrototype"
               type="button"
               class="btn btn-primary"
               :disabled="!acceptable || (target === 'field' && duplicateName)"
@@ -636,6 +866,18 @@ function removeField(index) {
             <li v-for="field in fields" :key="field.index">
               <strong>{{ field.name }}</strong
               ><code>{{ field.selector }}</code>
+              <small
+                v-if="inspectorPrototype"
+                class="scout-field-verification"
+                :data-verified="fieldVerified(field)"
+                >{{
+                  t(
+                    fieldVerified(field)
+                      ? 'scout.product.fieldVerified'
+                      : 'scout.product.fieldNeedsCheck',
+                  )
+                }}</small
+              >
               <div>
                 <button
                   type="button"
@@ -656,6 +898,55 @@ function removeField(index) {
         </fieldset>
       </section>
     </div>
+    <div v-if="inspectorPrototype" class="scout-inspector-actions" aria-live="polite">
+      <div>
+        <strong>{{
+          t(
+            checked
+              ? 'scout.product.checked'
+              : selectedNode
+                ? 'scout.product.selected'
+                : 'scout.product.select',
+          )
+        }}</strong>
+        <p id="scout-preview-requirements" class="small scout-muted mb-0">{{ previewHint }}</p>
+        <button
+          v-if="canReviewNext"
+          type="button"
+          class="btn btn-outline-secondary btn-sm mt-2 scout-review-next"
+          @click="reviewNext"
+        >
+          {{ t(!cardReady ? 'scout.product.reviewCard' : 'scout.product.reviewNext') }}
+        </button>
+      </div>
+      <div class="scout-inspector-action-buttons">
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          :disabled="disabled || !canCancel"
+          @click="cancelSelection"
+        >
+          {{ t('scout.inspector.cancel') }}
+        </button>
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          :disabled="disabled || !valid"
+          aria-describedby="scout-preview-requirements"
+          @click="emit('preview')"
+        >
+          {{ t('scout.workspace.preparePreview') }} · {{ fields.length }}
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary"
+          :disabled="primaryDisabled"
+          @click="primaryAction"
+        >
+          {{ primaryLabel }}
+        </button>
+      </div>
+    </div>
     <div class="scout-actions mt-3">
       <button
         type="button"
@@ -667,6 +958,7 @@ function removeField(index) {
       ><button
         type="button"
         class="btn btn-primary"
+        v-if="!inspectorPrototype"
         :disabled="disabled || !valid"
         @click="emit('preview')"
       >

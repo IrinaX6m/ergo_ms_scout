@@ -34,6 +34,10 @@ const { t } = useAppI18n()
             ><code>{{ field.kind }}: {{ field.selector || t('scout.workspace.notSpecified') }}</code
             ><span class="scout-muted small">
               {{ field.scope === 'record' ? t('scout.scopeRecord') : t('scout.scopePage') }}
+              <template v-if="field.conversion">
+                · {{ t(`scout.product.${field.conversion.type}`) }}
+                <code>{{ JSON.stringify(field.conversion) }}</code></template
+              >
               <template v-if="field.many"> · {{ t('scout.fieldMany') }}</template>
             </span>
           </div></template
@@ -74,6 +78,36 @@ const { t } = useAppI18n()
       <dt>{{ t('scout.workspace.collectionBounds') }}</dt>
       <dd><ScoutCrawlSummary :run="{ crawl: plan.crawl }" plan-details /></dd>
     </div>
+    <template v-if="expanded">
+      <div>
+        <dt>{{ t('scout.product.proxy') }}</dt>
+        <dd>{{ plan.proxy_profile_revision_public_id || t('scout.product.direct') }}</dd>
+      </div>
+      <div v-if="plan.identity">
+        <dt>{{ t('scout.product.identity') }}</dt>
+        <dd>
+          {{ plan.identity.kind }} · {{ plan.identity.namespace }}
+          <code>{{ plan.identity.field }}</code>
+        </dd>
+      </div>
+      <div v-if="plan.crawl?.sitemap_url || plan.crawl?.sitemap_from_robots">
+        <dt>Sitemap / robots.txt</dt>
+        <dd>
+          {{ plan.crawl.sitemap_url }}
+          <span v-if="plan.crawl.sitemap_from_robots">{{ t('scout.product.robots') }}</span>
+        </dd>
+      </div>
+      <div v-if="plan.crawl?.page_types?.length">
+        <dt>{{ t('scout.product.pageTypes') }}</dt>
+        <dd>
+          <div v-for="type in plan.crawl.page_types" :key="type.id">
+            <strong>{{ type.id }}</strong> · {{ t(`scout.product.${type.action}`)
+            }}<code>{{ JSON.stringify(type.match) }}</code
+            ><code v-if="type.selectors">{{ JSON.stringify(type.selectors) }}</code>
+          </div>
+        </dd>
+      </div>
+    </template>
     <div v-if="expanded && plan.limits">
       <dt>{{ t('scout.workspace.requestLimits') }}</dt>
       <dd>

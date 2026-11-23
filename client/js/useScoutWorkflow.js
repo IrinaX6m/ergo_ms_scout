@@ -1,3 +1,4 @@
+import { blankField, optionForm, optionPayload, crawlOptions, updateRule } from './planOptions.js'
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouteQueryState } from '@/composables/useRouteQueryState.js'
 import { useAppI18n } from '@/i18n/useAppI18n.js'
@@ -17,12 +18,10 @@ import {
   workflowStage,
 } from './workflowState.js'
 
-function blankField(scope = 'page') {
-  return { name: '', kind: 'css', selector: '', scope, many: false }
-}
-
 function blankForm() {
   return {
+    ...optionForm(),
+    aiGoal: '',
     title: '',
     url: '',
     recordMode: 'page',
@@ -31,22 +30,15 @@ function blankForm() {
     crawlMode: 'pages',
     allowedHosts: '',
     visitPrefix: '',
-    extractPrefix: '',
     crawlDepth: 2,
     crawlPages: 50,
     crawlLimits: defaultCrawlLimits(),
     previewUrl: '',
-    fields: [blankField()],
   }
 }
 
 function updateFirst(items = [], first) {
   return [...(first ? [first] : []), ...items.slice(1)]
-}
-
-function updateRule(items, value) {
-  const pattern = value.trim()
-  return updateFirst(items, pattern ? { kind: items?.[0]?.kind || 'prefix', pattern } : null)
 }
 
 export function useScoutWorkflow() {
@@ -72,9 +64,11 @@ export function useScoutWorkflow() {
   const exporting = ref(false)
   const connectionLost = ref(false)
   const recordsError = ref(false)
+  const recordsLoading = ref(false)
   const pageError = ref('')
   const savedStamp = ref('')
   const savedRevision = ref(null)
+  const draftBase = ref(null)
   const loadedJob = ref('')
   const exportKind = ref('json')
   const errors = reactive({ url: '', card: '', fields: [] })
@@ -92,13 +86,11 @@ export function useScoutWorkflow() {
   function payload() {
     const f = form.value
     const cards = f.recordMode === 'cards'
-    const revision = savedRevision.value
+    const revision = draftBase.value || savedRevision.value
     const crawl = { ...revision?.crawl }
-    if (f.crawlMode === 'pages') {
-      delete crawl.page_types
-      delete crawl.sitemap_url
-      delete crawl.sitemap_from_robots
-    }
+    delete crawl.page_types
+    delete crawl.sitemap_url
+    delete crawl.sitemap_from_robots
     return {
       title: f.title.trim(),
       seed_urls: updateFirst(revision?.seed_urls, f.url.trim()),
@@ -124,14 +116,12 @@ export function useScoutWorkflow() {
           .map((item) => item.trim())
           .filter(Boolean),
         visit: updateRule(crawl?.visit, f.visitPrefix),
-        extract_on: updateRule(crawl?.extract_on, f.extractPrefix),
+        extract_on: updateRule(f.extractRules, f.extractPrefix),
         max_depth: f.crawlDepth === '' ? 2 : Number(f.crawlDepth),
         max_pages: f.crawlPages === '' ? 50 : Number(f.crawlPages),
+        ...crawlOptions(f),
       },
-      ...(revision?.identity ? { identity: revision.identity } : {}),
-      ...(revision?.proxy_profile_revision_public_id
-        ? { proxy_profile_revision_public_id: revision.proxy_profile_revision_public_id }
-        : {}),
+      ...optionPayload(f),
     }
   }
   const stamp = computed(() => JSON.stringify(payload()))
@@ -192,11 +182,14 @@ export function useScoutWorkflow() {
   )
 
   function applyJob(job) {
+    draftBase.value = null
     const revision = job?.revision || {}
     const crawl = revision.crawl || {}
     applyingJob = true
     form.value = {
       ...blankForm(),
+      ...optionForm(revision),
+      aiGoal: form.value.aiGoal || '',
       title: job?.title || '',
       url: revision.seed_urls?.[0] || '',
       recordMode: revision.record?.selector ? 'cards' : 'page',
@@ -205,21 +198,31 @@ export function useScoutWorkflow() {
       crawlMode: crawl.mode === 'site' ? 'site' : 'pages',
       allowedHosts: Array.isArray(crawl.allowed_hosts) ? crawl.allowed_hosts.join(', ') : '',
       visitPrefix: crawl.visit?.[0]?.pattern || '',
-      extractPrefix: crawl.extract_on?.[0]?.pattern || '',
       crawlDepth: crawl.max_depth ?? 2,
       crawlPages: crawl.max_pages ?? 50,
       crawlLimits: defaultCrawlLimits(crawl),
       previewUrl: crawl.preview_urls?.[0] || '',
-      fields:
-        Array.isArray(revision.fields) && revision.fields.length
-          ? revision.fields.map((field) => ({ ...blankField(), ...field }))
-          : [blankField()],
     }
     errors.fields = form.value.fields.map(() => '')
     loadedJob.value = job.public_id
     savedRevision.value = revision
     savedStamp.value = stamp.value
     applyingJob = false
+  }
+
+  function applySuggestion(draft) {
+    if (busy.value || !draft?.fields?.length) return
+    const revision = savedRevision.value,
+      stampBefore = savedStamp.value,
+      id = loadedJob.value
+    const title = form.value.title
+    applyJob({ public_id: id, title, revision: draft })
+    savedRevision.value = revision
+    savedStamp.value = stampBefore
+    draftBase.value = draft
+    draftVersion += 1
+    confirmationOpen.value = false
+    mode.value = 'manual'
   }
 
   async function loadJob(publicId) {
@@ -276,8 +279,8 @@ export function useScoutWorkflow() {
         let cursor
         do {
           const params = full
-            ? { limit: 200, ...(cursor ? { cursor } : {}) }
-            : { limit: 20, order: 'recent' }
+            ? { limit: 200, value_format: 'typed_v1', ...(cursor ? { cursor } : {}) }
+            : { limit: 20, order: 'recent', value_format: 'typed_v1' }
           const response = await apiClient.get(scoutEndpoints.records(publicId), params)
           if (!current()) return
           recordsError.value = !response.success
@@ -291,15 +294,20 @@ export function useScoutWorkflow() {
         recordsError.value = true
         logError('SCOUT: не удалось прочитать записи', error)
       } finally {
-        if (recordsLoad === load) recordsLoad = null
+        if (recordsLoad === load) {
+          recordsLoad = null
+          recordsLoading.value = false
+        }
       }
     })()
     recordsLoad = load
+    recordsLoading.value = true
     return load.promise
   }
 
   function clearRecords() {
     recordsLoad = null
+    recordsLoading.value = false
     records.value = []
     recordsError.value = false
   }
@@ -336,6 +344,7 @@ export function useScoutWorkflow() {
     loadedJob.value = ''
     savedStamp.value = ''
     savedRevision.value = null
+    draftBase.value = null
     pageError.value = ''
     Object.assign(errors, { url: '', card: '', fields: [] })
     editorStep.value = 'mode'
@@ -366,12 +375,15 @@ export function useScoutWorkflow() {
     if (!quiet) runLoading.value = true
     try {
       let summary = quiet
-      let response = await apiClient.get(scoutEndpoints.run(publicId), summary ? { summary: 1 } : {})
+      let response = await apiClient.get(
+        scoutEndpoints.run(publicId),
+        summary ? { summary: 1 } : { value_format: 'typed_v1' },
+      )
       if (!current()) return
       if (summary && response.success && !ACTIVE_STATUSES.includes(response.data.status)) {
         // The full response supplies the preview and the final journal once polling stops.
         summary = false
-        response = await apiClient.get(scoutEndpoints.run(publicId))
+        response = await apiClient.get(scoutEndpoints.run(publicId), { value_format: 'typed_v1' })
         if (!current()) return
       }
       if (!response.success) {
@@ -616,6 +628,7 @@ export function useScoutWorkflow() {
     try {
       const response = await apiClient.post(scoutEndpoints.exportRun(id), {
         kind: exportKind.value,
+        value_format: 'typed_v1',
       })
       if (disposed || owner !== context || query.value.run !== id) return
       if (!response.success) {
@@ -659,6 +672,7 @@ export function useScoutWorkflow() {
 
   return {
     visualPlanValid,
+    applySuggestion,
     form,
     errors,
     run,
@@ -674,6 +688,7 @@ export function useScoutWorkflow() {
     jobLoading,
     connectionLost,
     recordsError,
+    recordsLoading,
     pageError,
     dirty,
     stage,

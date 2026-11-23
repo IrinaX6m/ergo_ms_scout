@@ -1,4 +1,9 @@
 export function displayValue(cell, missing) {
+  const typed = cell?.typed
+  if (typed?.status === 'ok') {
+    if (typed.type === 'money') return `${typed.value.amount} ${typed.value.currency}`
+    return String(typed.value)
+  }
   const value = cell?.normalized ?? cell?.raw ?? ''
   return String(value).trim() || missing
 }

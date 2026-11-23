@@ -6,6 +6,7 @@ import FormField from '@/components/FormField.vue'
 import SelectBox from '@/components/SelectBox.vue'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import { useAppI18n } from '@/i18n/useAppI18n.js'
+import ScoutConversion from './ScoutConversion.vue'
 import ScoutCrawlSettings from './ScoutCrawlSettings.vue'
 
 const form = defineModel({ type: Object, required: true })
@@ -119,6 +120,7 @@ const scopes = computed(() => [
         <details class="scout-field-rule__options">
           <summary>{{ t('scout.workspace.fieldOptions') }}</summary>
           <div class="scout-field-options">
+            <ScoutConversion v-model="form.fields[index]" :disabled="disabled" />
             <div v-if="form.recordMode === 'cards'" class="scout-input-label">
               <span>{{ t('scout.fieldScope') }}</span>
               <SelectBox
@@ -215,7 +217,6 @@ const scopes = computed(() => [
         v-model:mode="form.crawlMode"
         v-model:hosts="form.allowedHosts"
         v-model:visit="form.visitPrefix"
-        v-model:extract="form.extractPrefix"
         v-model:depth="form.crawlDepth"
         v-model:pages="form.crawlPages"
         v-model:limits="form.crawlLimits"

@@ -4,7 +4,7 @@ import { scoutEndpoints } from './endpoints.js'
 import { validSource } from './workflowState.js'
 
 // A URL/mode change invalidates every pending response, including check requests.
-export function useVisualSnapshot(url, enabled) {
+export function useVisualSnapshot(url, enabled, options) {
   const snapshot = ref(null)
   const status = ref('idle')
   const error = ref(null)
@@ -76,7 +76,7 @@ export function useVisualSnapshot(url, enabled) {
     try {
       const response = await apiClient.post(
         scoutEndpoints.visualSnapshots,
-        { url: url.value.trim() },
+        { url: url.value.trim(), ...(options?.value || {}) },
         true,
         quiet,
       )
@@ -126,7 +126,7 @@ export function useVisualSnapshot(url, enabled) {
       if (request === checkRequest) checking.value = false
     }
   }
-  watch([url, enabled], invalidate, { flush: 'sync' })
+  watch(options ? [url, enabled, options] : [url, enabled], invalidate, { flush: 'sync' })
   onUnmounted(() => {
     disposed = true
     invalidate()

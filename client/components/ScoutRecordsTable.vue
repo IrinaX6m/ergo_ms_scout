@@ -30,6 +30,7 @@ const columns = computed(() =>
     label: key,
   })),
 )
+const selectedValue = computed(() => selected.value?.record.values?.[selected.value?.field])
 const evidence = computed(() =>
   (selected.value?.record.evidence || []).filter(
     (item) => item.field_path === selected.value?.field,
@@ -40,6 +41,17 @@ watch(
   () => {
     selected.value = null
     patchState({ page: 1 })
+  },
+)
+
+watch(
+  () => props.records,
+  () => {
+    if (!selected.value) return
+    const record = props.records.find(
+      (item) => item.public_id && item.public_id === selected.value.record.public_id,
+    )
+    selected.value = record ? { record, field: selected.value.field } : null
   },
 )
 
@@ -72,6 +84,9 @@ function selectCell(item, field) {
           @click="selectCell(item, column.key)"
         >
           {{ displayValue(item.record.values?.[column.key], t('scout.flow.notFound')) }}
+          <small v-if="item.record.values?.[column.key]?.typed" class="d-block scout-muted">{{
+            t(`scout.product.typedStatus.${item.record.values[column.key].typed.status}`)
+          }}</small>
         </button>
       </template>
     </DataTable>
@@ -92,6 +107,25 @@ function selectCell(item, field) {
           <X :size="16" aria-hidden="true" />
         </button>
       </div>
+      <dl v-if="selectedValue?.typed" class="scout-plan mt-3">
+        <div>
+          <dt>{{ t('scout.product.typedValue') }}</dt>
+          <dd>{{ displayValue(selectedValue, t('scout.flow.notFound')) }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('scout.product.normalized') }}</dt>
+          <dd>{{ selectedValue.normalized }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('scout.product.errorCode') }}</dt>
+          <dd>
+            {{
+              selectedValue.typed.error?.code ||
+              t(`scout.product.typedStatus.${selectedValue.typed.status}`)
+            }}
+          </dd>
+        </div>
+      </dl>
       <dl v-for="(item, index) in evidence" :key="index" class="scout-plan mt-3">
         <div>
           <dt>{{ t('scout.url') }}</dt>
@@ -104,6 +138,14 @@ function selectCell(item, field) {
           <dd>
             <code>{{ item.locator || t('scout.workspace.notSpecified') }}</code>
           </dd>
+        </div>
+        <div>
+          <dt>{{ t('scout.product.snapshot') }}</dt>
+          <dd>{{ item.snapshot_public_id || t('scout.workspace.notSpecified') }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('scout.product.revision') }}</dt>
+          <dd>{{ item.rules_revision_public_id || t('scout.workspace.notSpecified') }}</dd>
         </div>
         <div>
           <dt>{{ t('scout.workspace.rawValue') }}</dt>

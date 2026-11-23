@@ -131,3 +131,83 @@ test('visual acceptance is invalidated by source, card and field changes', () =>
   ])
     assert.notEqual(visualPlanStamp({ ...form, ...changes }), stamp)
 })
+
+
+test('advanced plan options preserve proxy, page types and explicit identity', async () => {
+  const { optionForm, optionPayload, crawlOptions } = await import('../js/planOptions.js')
+  const plan = {
+    proxy_profile_revision_public_id: 'proxy-v1',
+    identity: { kind: 'field', namespace: 'catalog', field: 'title' },
+    fields: [{ name: 'title', kind: 'css', selector: 'h1' }],
+    crawl: {
+      page_types: [{
+        id: 'product', action: 'extract', match: [{ kind: 'contains', pattern: 'item' }],
+        selectors: { title: { kind: 'css', selector: 'h2' } },
+      }],
+      sitemap_url: 'https://example.org/sitemap.xml',
+    },
+  }
+  const form = { ...optionForm(plan), crawlMode: 'site' }
+  assert.deepEqual(optionPayload(form), {
+    proxy_profile_revision_public_id: 'proxy-v1', identity: plan.identity,
+  })
+  assert.deepEqual(crawlOptions(form).page_types, plan.crawl.page_types)
+  assert.equal(crawlOptions(form).sitemap_url, plan.crawl.sitemap_url)
+  form.sitemapFromRobots = true
+  assert.equal(crawlOptions(form).sitemap_from_robots, true)
+  assert.equal('sitemap_url' in crawlOptions(form), false)
+  form.sitemapFromRobots = false
+  assert.equal(crawlOptions(form).sitemap_url, plan.crawl.sitemap_url)
+  assert.deepEqual(crawlOptions({ ...form, crawlMode: 'pages' }), {})
+  assert.deepEqual(optionPayload({ ...form, proxyRevision: '', identityKind: '' }), {
+    proxy_profile_revision_public_id: null,
+  })
+})
+
+test('switching extraction modes preserves all saved URL rules and page type edits', async () => {
+  const { addPageType, crawlOptions, optionForm, updateRule } = await import('../js/planOptions.js')
+  const rules = [{ kind: 'prefix', pattern: '/sale' }, { kind: 'contains', pattern: 'outlet' }]
+  const form = { ...optionForm({ crawl: { extract_on: rules } }), crawlMode: 'site' }
+  assert.equal(form.extractionMode, 'filter')
+  addPageType(form)
+  form.extractionMode = 'types'
+  assert.deepEqual(crawlOptions(form).page_types[0].match, rules)
+  assert.deepEqual(crawlOptions(form).extract_on, [])
+  form.pageTypes[0].match[1].pattern = 'discount'
+  form.extractionMode = 'filter'
+  assert.equal('page_types' in crawlOptions(form), false)
+  assert.deepEqual(updateRule(form.extractRules, form.extractPrefix), rules)
+  form.extractionMode = 'types'
+  assert.equal(crawlOptions(form).page_types[0].match[1].pattern, 'discount')
+})
+
+test('type selectors follow each field through renaming, removal and reuse of its name', async () => {
+  const { addPageType, crawlOptions, optionForm, setTypeSelector } = await import('../js/planOptions.js')
+  const form = { ...optionForm(), crawlMode: 'site', extractionMode: 'types' }
+  const [field] = form.fields
+  field.name = 'price'
+  addPageType(form)
+  const [type] = form.pageTypes
+  setTypeSelector(field, type, { selector: '.sale-price' })
+  field.name = ''
+  form.fields.push({ name: 'price', kind: 'css' })
+  field.name = 'cost'
+  type.id = 'discount'
+  assert.deepEqual(crawlOptions(form).page_types[0].selectors, {
+    cost: { kind: 'css', selector: '.sale-price' },
+  })
+  form.fields.shift()
+  assert.deepEqual(crawlOptions(form).page_types[0].selectors, {})
+})
+test('typed values preserve exact amounts, zero, dates and invalid raw text', () => {
+  assert.equal(displayValue({typed:{type:'integer',status:'ok',value:0}},'missing'),'0')
+  assert.equal(displayValue({typed:{type:'money',status:'ok',value:{amount:'1234.50',currency:'RUB'}}},'missing'),'1234.50 RUB')
+  assert.equal(displayValue({normalized:'31.02.2026',typed:{type:'date',status:'invalid',value:null,error:{code:'invalid_date'}}},'missing'),'31.02.2026')
+  assert.equal(displayValue({typed:{type:'date',status:'ok',value:'2026-11-06'}},'missing'),'2026-11-06')
+})
+test('product copy has matching translation keys', async () => {
+  const {default: locales} = await import('../js/productLocales.js')
+  const keys = object => Object.entries(object).flatMap(([key,value])=> typeof value === 'object' ? keys(value).map(child=>key+'.'+child) : [key]).sort()
+  assert.deepEqual(keys(locales.ru),keys(locales.en))
+  assert.deepEqual(keys(locales.ru),keys(locales.fr))
+})
