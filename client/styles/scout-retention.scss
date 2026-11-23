@@ -1,0 +1,97 @@
+.scout-workflow.scout-retention {
+  .scout-retention-card {
+    margin: 1.5rem 0;
+  }
+  .scout-retention-card section {
+    padding: 1.25rem;
+  }
+  .scout-retention-policy-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .scout-retention-policy-fields .form-field {
+    display: block;
+    padding: 0.75rem;
+  }
+  .scout-retention-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    margin: 0.8rem 0;
+  }
+  .scout-retention-checkbox input {
+    flex-shrink: 0;
+    margin-top: 0.35rem;
+  }
+  .scout-retention-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.75rem 0;
+  }
+  .btn {
+    white-space: normal;
+    min-height: 44px;
+  }
+  .scout-retention-details,
+  .scout-retention-totals {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8rem 1rem;
+    margin: 1rem 0;
+  }
+  .scout-retention-totals > div {
+    padding: 0.75rem;
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+  }
+  dt {
+    color: var(--ui-text-muted);
+    font-weight: 400;
+    font-size: 0.875rem;
+  }
+  dd {
+    margin: 0;
+  }
+  .scout-retention-items {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0;
+  }
+  .scout-retention-items > li {
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--ui-border);
+  }
+  .scout-retention-item-heading {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  p,
+  dd,
+  code,
+  button {
+    overflow-wrap: anywhere;
+  }
+  @media (max-width: 600px) {
+    .scout-retention-card section {
+      padding: 0.85rem;
+    }
+    .scout-retention-policy-fields,
+    .scout-retention-details,
+    .scout-retention-totals {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .scout-retention-buttons .btn {
+      width: 100%;
+    }
+    .scout-header {
+      display: block;
+    }
+    .scout-retention-card section > button {
+      width: 100%;
+    }
+  }
+}

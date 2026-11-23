@@ -42,6 +42,7 @@ async function main() {
     await require('./visual-browser.cjs')(browser, output)
     await require('./product-browser.cjs')(browser, output)
     await require('./schedule-browser.cjs')(browser, output)
+    await require('./retention-browser.cjs')(browser, output)
     page = await browser.newPage({ viewport: { width: 1440, height: 1100 } })
     const errors = []
     page.on('pageerror', (error) => errors.push(error.message))

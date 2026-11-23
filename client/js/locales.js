@@ -1,3 +1,4 @@
+import retentionLocales from './retentionLocales.js'
 import scheduleLocales from './scheduleLocales.js'
 import productLocales from './productLocales.js'
 import workspaceLocales from './workspaceLocales.js'
@@ -10,6 +11,7 @@ export default {
       workspace: workspaceLocales.ru,
       product: productLocales.ru,
       schedule: scheduleLocales.ru,
+      retention: retentionLocales.ru,
       visual: visualLocales.ru,
       inspector: inspectorLocales.ru,
       routes: { home: 'Сбор данных' },
@@ -146,6 +148,7 @@ export default {
       workspace: workspaceLocales.en,
       product: productLocales.en,
       schedule: scheduleLocales.en,
+      retention: retentionLocales.en,
       visual: visualLocales.en,
       inspector: inspectorLocales.en,
       routes: { home: 'Data collection' },
@@ -282,6 +285,7 @@ export default {
       workspace: workspaceLocales.fr,
       product: productLocales.fr,
       schedule: scheduleLocales.fr,
+      retention: retentionLocales.fr,
       visual: visualLocales.fr,
       inspector: inspectorLocales.fr,
       routes: { home: 'Collecte de données' },
