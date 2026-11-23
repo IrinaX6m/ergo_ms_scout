@@ -36,6 +36,10 @@ export function crawlOptions(form) {
       let selectors
       try {
         selectors = JSON.parse(selectorsText || '{}')
+        if (selectors && typeof selectors === 'object' && !Array.isArray(selectors))
+          selectors = Object.fromEntries(
+            Object.entries(selectors).filter(([, rule]) => rule?.selector?.trim()),
+          )
       } catch {
         selectors = selectorsText
       }

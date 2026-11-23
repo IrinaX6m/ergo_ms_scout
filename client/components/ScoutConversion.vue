@@ -1,10 +1,17 @@
 <script setup>
-import { useId, computed } from 'vue'
+import { useId, watch, computed } from 'vue'
 import { useAppI18n } from '@/i18n/useAppI18n.js'
 const field = defineModel({ type: Object, required: true })
 defineProps({ disabled: Boolean })
 const uid = useId()
 const { t } = useAppI18n()
+watch(
+  () => field.value.many,
+  (many) => {
+    if (many) delete field.value.conversion
+  },
+  { immediate: true },
+)
 const kind = computed({
   get: () => field.value.conversion?.type || '',
   set: (type) => {

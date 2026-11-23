@@ -47,6 +47,7 @@ function resizeKey(area, event) {
 function resizeStart(area, event) {
   if (event.button !== 0) return
   event.preventDefault()
+  event.currentTarget.setPointerCapture(event.pointerId)
   dragCleanup()
   const start = event.clientX,
     width = widths[area]

@@ -198,6 +198,17 @@ apiClient.post = async (url, body) => {
   }
   if (url.startsWith('scout/proxy-profiles/')) {
     fixture.calls.push(['post', url, clone(body)])
+    if (url === 'scout/proxy-profiles/') {
+      fixture.profilesCreated = (fixture.profilesCreated || 0) + 1
+      return result({
+        public_id: 'proxy-' + (fixture.profilesCreated + 1),
+        revision_public_id: 'proxy-v' + (fixture.profilesCreated + 1),
+        ip: body.ip,
+        port: body.port,
+        auth_type: body.auth_type,
+        credentials_configured: body.auth_type === 'basic',
+      })
+    }
     return result({ status: 'ready' })
   }
   return productPost(url, body)

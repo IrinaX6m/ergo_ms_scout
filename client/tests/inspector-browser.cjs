@@ -104,8 +104,14 @@ module.exports = async (browser, output) => {
     await separator.focus()
     const width = Number(await separator.getAttribute('aria-valuenow'))
     await separator.press('ArrowRight')
-    assert.equal(Number(await separator.getAttribute('aria-valuenow')), width + 10) +
-      (await ui.locator('#scout-dom-search').fill('does-not-exist'))
+    assert.equal(Number(await separator.getAttribute('aria-valuenow')), width + 10)
+    await separator.hover({ position: { x: 5, y: 200 } })
+    const handle = await separator.boundingBox()
+    await page.mouse.down()
+    await page.mouse.move(handle.x + 40, handle.y + 200)
+    await page.mouse.up()
+    assert(Number(await separator.getAttribute('aria-valuenow')) > width + 10) +
+      +(await ui.locator('#scout-dom-search').fill('does-not-exist'))
     await ui.getByRole('button', { name: 'Найти', exact: true }).click()
     await ui.getByText('Найдено: 0. В этой порции: 0.', { exact: true }).waitFor()
     await frame.locator('p').first().click()

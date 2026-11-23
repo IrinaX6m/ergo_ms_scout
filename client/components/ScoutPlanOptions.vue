@@ -91,6 +91,25 @@ function loadOptions(event) {
   if (event.target === event.currentTarget && event.target.open && !profiles.value.length)
     request('list')
 }
+function overrides(type) {
+  try {
+    const value = JSON.parse(type.selectorsText || '{}')
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  } catch {
+    return {}
+  }
+}
+function setOverride(type, name, key, value) {
+  const rules = overrides(type)
+  rules[name] = {
+    ...(rules[name] || {
+      kind: form.value.fields.find((field) => field.name === name)?.kind || 'css',
+      selector: '',
+    }),
+    [key]: value,
+  }
+  type.selectorsText = JSON.stringify(rules)
+}
 function addType() {
   form.value.pageTypes.push({
     id: `type_${form.value.pageTypes.length + 1}`,
@@ -322,20 +341,37 @@ function addType() {
               v-model="rule.pattern"
               class="form-control"
           /></label>
-          <label
-            v-if="type.action === 'extract'"
-            class="scout-input-label"
-            :for="`${uid}-15-${index}`"
-            >{{ t('scout.product.overrides')
-            }}<textarea
-              :id="`${uid}-15-${index}`"
-              :aria-label="t('scout.product.overrides')"
-              v-model="type.selectorsText"
-              class="form-control scout-code"
-              rows="3"
-              spellcheck="false"
-            />
-          </label>
+          <details v-if="type.action === 'extract'">
+            <summary>{{ t('scout.product.overrides') }}</summary>
+            <div
+              v-for="field in form.fields.filter((item) => item.name)"
+              :key="field.name"
+              class="scout-input-label mt-2"
+            >
+              <strong>{{ field.name }}</strong>
+              <label :for="`${uid}-override-kind-${index}-${field.name}`"
+                >{{ t('scout.fieldKind') }}
+                <select
+                  :id="`${uid}-override-kind-${index}-${field.name}`"
+                  class="form-select"
+                  :value="overrides(type)[field.name]?.kind || field.kind"
+                  @change="setOverride(type, field.name, 'kind', $event.target.value)"
+                >
+                  <option value="css">CSS</option>
+                  <option value="xpath">XPath</option>
+                </select></label
+              >
+              <label :for="`${uid}-override-rule-${index}-${field.name}`"
+                >{{ t('scout.fieldSelector') }}
+                <input
+                  :id="`${uid}-override-rule-${index}-${field.name}`"
+                  class="form-control"
+                  :value="overrides(type)[field.name]?.selector || ''"
+                  :placeholder="field.selector"
+                  @input="setOverride(type, field.name, 'selector', $event.target.value)"
+              /></label>
+            </div>
+          </details>
           <button
             type="button"
             class="btn btn-outline-secondary btn-sm mt-2"
