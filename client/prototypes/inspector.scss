@@ -347,3 +347,22 @@
     gap: 0;
   }
 }
+
+.scout-workflow .scout-inspector-prototype {
+  .scout-inspector-actions > div:first-child {
+    flex: 1 1 16rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .scout-field-verification {
+    display: block;
+    color: var(--ui-text-muted);
+  }
+  .scout-field-verification[data-verified='false'] {
+    color: var(--ui-text);
+    font-weight: 600;
+  }
+  .scout-review-next {
+    min-height: 44px;
+  }
+}

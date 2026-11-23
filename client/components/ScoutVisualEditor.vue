@@ -164,7 +164,7 @@ const result = ref(null)
 const checkedStamp = ref('')
 const acceptedStamp = ref('')
 const cardStamp = ref('')
-const verifiedFields = new Map()
+const verifiedFields = reactive(new Map())
 let applying = false
 const recordRule = computed(() =>
   form.value.recordMode === 'cards'
@@ -213,6 +213,50 @@ const valid = computed(
     (!props.inspectorPrototype || !tree.invalid.value) &&
     acceptedStamp.value === visualPlanStamp(form.value),
 )
+function fieldVerified(field) {
+  return (
+    status.value === 'ready' &&
+    !tree.invalid.value &&
+    cardReady.value &&
+    verifiedFields.get(JSON.stringify(form.value.fields[field.index])) === snapshot.value?.public_id
+  )
+}
+const pendingFields = computed(() => fields.value.filter((field) => !fieldVerified(field)))
+const previewHint = computed(() => {
+  if (props.disabled) return t('scout.product.previewWait')
+  if (status.value === 'loading') return t('scout.visual.loading')
+  if (tree.invalid.value || status.value === 'expired') return t('scout.product.previewReload')
+  if (status.value !== 'ready') return t('scout.product.previewLoad')
+  if (!cardReady.value) return t('scout.product.previewCard')
+  if (!fields.value.length) return t('scout.product.previewAddField')
+  if (pendingFields.value.length)
+    return t('scout.product.previewFields', {
+      names: pendingFields.value
+        .slice(0, 3)
+        .map((field) => field.name || `#${field.index + 1}`)
+        .join(', '),
+      count: pendingFields.value.length,
+    })
+  if (!valid.value) return t('scout.product.previewChanged')
+  return t('scout.product.previewReady', { count: fields.value.length })
+})
+const canReviewNext = computed(
+  () =>
+    !props.disabled &&
+    status.value === 'ready' &&
+    !tree.invalid.value &&
+    (!cardReady.value || pendingFields.value.length > 0),
+)
+async function reviewNext() {
+  if (!canReviewNext.value) return
+  if (!cardReady.value) {
+    target.value = 'record'
+    recordSelector.value = form.value.recordSelector || ''
+    manualRule.value = true
+    await selectTab('field')
+    editor.value?.querySelector('#scout-visual-record')?.focus()
+  } else if (pendingFields.value.length) await editField(pendingFields.value[0].index)
+}
 const highlighted = computed(() => [
   ...new Set([...summary.value.nodeIds, ...(selectedNode.value ? [selectedNode.value] : [])]),
 ])
@@ -822,6 +866,18 @@ function removeField(index) {
             <li v-for="field in fields" :key="field.index">
               <strong>{{ field.name }}</strong
               ><code>{{ field.selector }}</code>
+              <small
+                v-if="inspectorPrototype"
+                class="scout-field-verification"
+                :data-verified="fieldVerified(field)"
+                >{{
+                  t(
+                    fieldVerified(field)
+                      ? 'scout.product.fieldVerified'
+                      : 'scout.product.fieldNeedsCheck',
+                  )
+                }}</small
+              >
               <div>
                 <button
                   type="button"
@@ -853,7 +909,15 @@ function removeField(index) {
                 : 'scout.product.select',
           )
         }}</strong>
-        <p class="small scout-muted mb-0">{{ t('scout.product.sequence') }}</p>
+        <p id="scout-preview-requirements" class="small scout-muted mb-0">{{ previewHint }}</p>
+        <button
+          v-if="canReviewNext"
+          type="button"
+          class="btn btn-outline-secondary btn-sm mt-2 scout-review-next"
+          @click="reviewNext"
+        >
+          {{ t(!cardReady ? 'scout.product.reviewCard' : 'scout.product.reviewNext') }}
+        </button>
       </div>
       <div class="scout-inspector-action-buttons">
         <button
@@ -868,6 +932,7 @@ function removeField(index) {
           type="button"
           class="btn btn-outline-secondary"
           :disabled="disabled || !valid"
+          aria-describedby="scout-preview-requirements"
           @click="emit('preview')"
         >
           {{ t('scout.workspace.preparePreview') }} · {{ fields.length }}

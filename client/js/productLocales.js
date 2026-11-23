@@ -1,5 +1,18 @@
 export default {
   ru: {
+    previewWait: 'Дождитесь завершения текущей операции.',
+    previewReload:
+      'Снимок недоступен. Загрузите страницу заново; сохранённые поля потребуется перепроверить.',
+    previewLoad: 'Загрузите страницу, чтобы проверить сохранённые правила.',
+    previewCard: 'Сначала проверьте и примите правило карточки на текущем снимке.',
+    previewAddField: 'Выберите значение, проверьте правило и примите хотя бы одно поле.',
+    previewFields: 'Нужно перепроверить поля на текущем снимке: {names}. Всего осталось: {count}.',
+    previewChanged: 'План изменён. Проверьте имена и правила полей, затем повторите проверку.',
+    previewReady: 'Все поля проверены: {count}. Можно получить предпросмотр.',
+    fieldVerified: 'Проверено на текущем снимке',
+    fieldNeedsCheck: 'Требует повторной проверки',
+    reviewNext: 'Перепроверить следующее поле',
+    reviewCard: 'Перепроверить карточку',
     additionalPreviews: 'Дополнительные страницы предпросмотра — по одному URL на строку',
     loadSnapshot: 'Загрузить снимок',
     tabHints: {
@@ -84,6 +97,18 @@ export default {
     pageAction: 'Назначение страницы',
   },
   en: {
+    previewWait: 'Wait for the current operation to finish.',
+    previewReload: 'Snapshot unavailable. Reload the page; saved fields will need to be rechecked.',
+    previewLoad: 'Load the page to check the saved rules.',
+    previewCard: 'Check and accept the card rule on the current snapshot first.',
+    previewAddField: 'Select a value, check its rule and accept at least one field.',
+    previewFields: 'Recheck fields on the current snapshot: {names}. Remaining: {count}.',
+    previewChanged: 'The plan changed. Review field names and rules, then check again.',
+    previewReady: 'All {count} fields are checked. Preview is available.',
+    fieldVerified: 'Checked on the current snapshot',
+    fieldNeedsCheck: 'Needs rechecking',
+    reviewNext: 'Recheck next field',
+    reviewCard: 'Recheck card',
     additionalPreviews: 'Additional preview pages — one URL per line',
     loadSnapshot: 'Load snapshot',
     tabHints: {
@@ -168,6 +193,19 @@ export default {
     pageAction: 'Page action',
   },
   fr: {
+    previewWait: 'Attendez la fin de l’opération.',
+    previewReload:
+      'Instantané indisponible. Rechargez la page ; les champs enregistrés devront être revérifiés.',
+    previewLoad: 'Chargez la page pour vérifier les règles enregistrées.',
+    previewCard: 'Vérifiez et acceptez d’abord la règle de fiche sur cet instantané.',
+    previewAddField: 'Choisissez une valeur, vérifiez sa règle et acceptez au moins un champ.',
+    previewFields: 'Champs à revérifier sur cet instantané : {names}. Restants : {count}.',
+    previewChanged: 'Le plan a changé. Vérifiez les noms et règles des champs, puis recommencez.',
+    previewReady: 'Les {count} champs sont vérifiés. L’aperçu est disponible.',
+    fieldVerified: 'Vérifié sur cet instantané',
+    fieldNeedsCheck: 'À revérifier',
+    reviewNext: 'Revérifier le champ suivant',
+    reviewCard: 'Revérifier la fiche',
     additionalPreviews: 'Autres pages d’aperçu — une URL par ligne',
     loadSnapshot: 'Charger l’instantané',
     tabHints: {

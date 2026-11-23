@@ -171,6 +171,62 @@ module.exports = async (browser, output) => {
     assert.equal(await ui.locator('iframe').count(), 0)
     await ui.locator('.scout-visual-source button').click()
     await frame.locator('p').first().waitFor()
+    // Saved rules survive reload, but each needs explicit verification on the new snapshot.
+    async function reviewCard() {
+      await ui.getByRole('button', { name: 'Перепроверить карточку', exact: true }).click()
+      await ui.getByRole('button', { name: 'Проверить правило', exact: true }).click()
+      await ui.getByRole('button', { name: 'Принять карточку', exact: true }).click()
+    }
+    async function reviewField(name) {
+      await ui.getByRole('button', { name: 'Перепроверить следующее поле', exact: true }).click()
+      assert.equal(await ui.locator('#scout-visual-name').inputValue(), name)
+      await ui.getByRole('button', { name: 'Проверить правило', exact: true }).click()
+      await ui.getByRole('button', { name: 'Сохранить изменения', exact: true }).click()
+    }
+    await reviewCard()
+    await reviewField('price')
+    await ui.locator('#scout-visual-name').fill('title')
+    await ui.locator('#scout-visual-css').fill('h3')
+    await ui.getByRole('button', { name: 'Проверить правило', exact: true }).click()
+    await ui.getByRole('button', { name: 'Принять поле', exact: true }).click()
+    assert.equal(await ui.locator('.scout-field-verification[data-verified=true]').count(), 2)
+    await ui.locator('.scout-visual-source button').click()
+    await frame.locator('p').first().waitFor()
+    assert(await ui.getByRole('button', { name: /Получить предпросмотр/ }).isDisabled())
+    await ui
+      .locator('#scout-preview-requirements')
+      .filter({ hasText: 'Сначала проверьте и примите правило карточки' })
+      .waitFor()
+    await reviewCard()
+    await ui.locator('#scout-preview-requirements').filter({ hasText: 'price, title' }).waitFor()
+    assert.equal(await ui.locator('.scout-field-verification[data-verified=false]').count(), 2)
+    for (const width of [390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 1100 })
+      await page.waitForFunction(() => {
+        const editor = document.querySelector('.scout-visual-editor')
+        return editor && editor.scrollWidth <= editor.clientWidth + 2
+      })
+      assert(
+        await ui
+          .getByRole('button', { name: 'Перепроверить следующее поле', exact: true })
+          .isVisible(),
+      )
+    }
+    await ui.locator('.scout-visual-fields').scrollIntoViewIfNeeded()
+    await page.screenshot({ path: path.join(output, 'preview-recheck-required.png') })
+
+    await reviewField('price')
+    assert.equal(await ui.locator('.scout-field-verification[data-verified=false]').count(), 1)
+    assert.equal(
+      await ui.locator('#scout-preview-requirements').textContent(),
+      'Нужно перепроверить поля на текущем снимке: title. Всего осталось: 1.',
+    )
+    await reviewField('title')
+    await ui
+      .locator('#scout-preview-requirements')
+      .filter({ hasText: 'Все поля проверены: 2' })
+      .waitFor()
+    assert(await ui.getByRole('button', { name: /Получить предпросмотр/ }).isEnabled())
     await ui.locator('#scout-visual-page').check()
     await ui.locator('#scout-visual-name').fill('page_price')
     await frame.locator('p').first().click()
