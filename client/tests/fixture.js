@@ -134,6 +134,10 @@ apiClient.post = async (url, body) => {
   return result(fixture.run || {})
 }
 installVisualFixture(apiClient, fixture, result)
+// Requests are mocked. Exercise the same URL resolution as the real API client.
+apiClient.client.defaults.baseURL = new URLSearchParams(location.search).has('httpApi')
+  ? 'http://api.example.test/api/'
+  : 'https://api.example.test/api/'
 fixture.suggestionError = false
 const productPost = apiClient.post
 const productGet = apiClient.get

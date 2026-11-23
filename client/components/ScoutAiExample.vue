@@ -8,13 +8,20 @@ const emit = defineEmits(['remove'])
 const uid = useId()
 const { t } = useAppI18n()
 const enabled = ref(true)
+const patternEdited = ref(false)
 const { snapshot, status, error, load } = useVisualSnapshot(
   computed(() => page.value.url),
   enabled,
   computed(() => ({ proxy_profile_revision_public_id: props.proxyRevision || null })),
 )
 watch([snapshot, status], () => {
-  page.value.snapshotId = status.value === 'ready' ? snapshot.value?.public_id : ''
+  const ready = status.value === 'ready'
+  const url = ready ? snapshot.value.final_url || page.value.url : ''
+  // Match the server's urlparse path, excluding the query, fragment and final segment parameters.
+  const path = url.match(/^https?:\/\/[^/?#]+(\/[^?#]*)?/i)?.[1]?.replace(/;[^/]*$/, '') || '/'
+  page.value.snapshotPath = ready ? path : ''
+  page.value.snapshotId = ready ? snapshot.value.public_id : ''
+  if (!patternEdited.value) page.value.pattern = page.value.snapshotPath.slice(0, 300)
 })
 </script>
 <template>
@@ -41,6 +48,8 @@ watch([snapshot, status], () => {
           :id="`${uid}-3`"
           :aria-label="t('scout.product.pattern')"
           v-model="page.pattern"
+          maxlength="300"
+          @input="patternEdited = true"
           class="form-control" /></label
       ><label class="scout-input-label" :for="`${uid}-4`"
         >{{ t('scout.product.pageAction')

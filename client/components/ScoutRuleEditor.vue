@@ -217,7 +217,6 @@ const scopes = computed(() => [
         v-model:mode="form.crawlMode"
         v-model:hosts="form.allowedHosts"
         v-model:visit="form.visitPrefix"
-        v-model:extract="form.extractPrefix"
         v-model:depth="form.crawlDepth"
         v-model:pages="form.crawlPages"
         v-model:limits="form.crawlLimits"

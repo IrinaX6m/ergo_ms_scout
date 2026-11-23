@@ -5,7 +5,6 @@ import { useAppI18n } from '@/i18n/useAppI18n.js'
 const mode = defineModel('mode')
 const hosts = defineModel('hosts')
 const visit = defineModel('visit')
-const extract = defineModel('extract')
 const depth = defineModel('depth')
 const pages = defineModel('pages')
 const previewUrl = defineModel('previewUrl')
@@ -30,7 +29,6 @@ function updateLimit(key, value) { limits.value = { ...limits.value, [key]: Numb
   <template v-if="mode === 'site'">
     <FormField :label="t('scout.flow.allowedHosts')" label-for="scout-hosts"><input id="scout-hosts" v-model="hosts" class="form-control" type="text"></FormField>
     <FormField :label="t('scout.flow.visitPrefix')" label-for="scout-visit"><input id="scout-visit" v-model="visit" class="form-control" type="text" placeholder="/catalog"></FormField>
-    <FormField :label="t('scout.flow.extractPrefix')" label-for="scout-extract"><input id="scout-extract" v-model="extract" class="form-control" type="text" placeholder="/item"></FormField>
     <FormField :label="t('scout.flow.previewUrl')" label-for="scout-preview-url"><input id="scout-preview-url" v-model="previewUrl" class="form-control" type="url"></FormField>
     <FormField :label="t('scout.flow.depth')" label-for="scout-depth"><input id="scout-depth" v-model="depth" class="form-control" type="number" min="0" max="5"></FormField>
     <FormField :label="t('scout.flow.crawlPages')" label-for="scout-pages"><input id="scout-pages" v-model="pages" class="form-control" type="number" min="1" max="200"></FormField>

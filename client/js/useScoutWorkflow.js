@@ -1,4 +1,4 @@
-import { optionForm, optionPayload, crawlOptions } from './planOptions.js'
+import { blankField, optionForm, optionPayload, crawlOptions, updateRule } from './planOptions.js'
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouteQueryState } from '@/composables/useRouteQueryState.js'
 import { useAppI18n } from '@/i18n/useAppI18n.js'
@@ -18,10 +18,6 @@ import {
   workflowStage,
 } from './workflowState.js'
 
-function blankField(scope = 'page') {
-  return { name: '', kind: 'css', selector: '', scope, many: false }
-}
-
 function blankForm() {
   return {
     ...optionForm(),
@@ -34,22 +30,15 @@ function blankForm() {
     crawlMode: 'pages',
     allowedHosts: '',
     visitPrefix: '',
-    extractPrefix: '',
     crawlDepth: 2,
     crawlPages: 50,
     crawlLimits: defaultCrawlLimits(),
     previewUrl: '',
-    fields: [blankField()],
   }
 }
 
 function updateFirst(items = [], first) {
   return [...(first ? [first] : []), ...items.slice(1)]
-}
-
-function updateRule(items, value) {
-  const pattern = value.trim()
-  return updateFirst(items, pattern ? { kind: items?.[0]?.kind || 'prefix', pattern } : null)
 }
 
 export function useScoutWorkflow() {
@@ -102,11 +91,6 @@ export function useScoutWorkflow() {
     delete crawl.page_types
     delete crawl.sitemap_url
     delete crawl.sitemap_from_robots
-    if (f.crawlMode === 'pages') {
-      delete crawl.page_types
-      delete crawl.sitemap_url
-      delete crawl.sitemap_from_robots
-    }
     return {
       title: f.title.trim(),
       seed_urls: updateFirst(revision?.seed_urls, f.url.trim()),
@@ -132,7 +116,7 @@ export function useScoutWorkflow() {
           .map((item) => item.trim())
           .filter(Boolean),
         visit: updateRule(crawl?.visit, f.visitPrefix),
-        extract_on: updateRule(crawl?.extract_on, f.extractPrefix),
+        extract_on: updateRule(f.extractRules, f.extractPrefix),
         max_depth: f.crawlDepth === '' ? 2 : Number(f.crawlDepth),
         max_pages: f.crawlPages === '' ? 50 : Number(f.crawlPages),
         ...crawlOptions(f),
@@ -214,15 +198,10 @@ export function useScoutWorkflow() {
       crawlMode: crawl.mode === 'site' ? 'site' : 'pages',
       allowedHosts: Array.isArray(crawl.allowed_hosts) ? crawl.allowed_hosts.join(', ') : '',
       visitPrefix: crawl.visit?.[0]?.pattern || '',
-      extractPrefix: crawl.extract_on?.[0]?.pattern || '',
       crawlDepth: crawl.max_depth ?? 2,
       crawlPages: crawl.max_pages ?? 50,
       crawlLimits: defaultCrawlLimits(crawl),
       previewUrl: crawl.preview_urls?.[0] || '',
-      fields:
-        Array.isArray(revision.fields) && revision.fields.length
-          ? revision.fields.map((field) => ({ ...blankField(), ...field }))
-          : [blankField()],
     }
     errors.fields = form.value.fields.map(() => '')
     loadedJob.value = job.public_id

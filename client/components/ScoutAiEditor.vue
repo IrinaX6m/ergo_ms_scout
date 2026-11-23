@@ -9,16 +9,19 @@ defineProps({ disabled: Boolean })
 const emit = defineEmits(['apply', 'manual'])
 const { t } = useAppI18n()
 let nextKey = 1
-const pages = ref([
-  {
-    key: nextKey++,
-    url: form.value.url,
+function newPage(url = '') {
+  const key = nextKey++
+  return {
+    key,
+    url,
     snapshotId: '',
-    id: 'catalog',
+    snapshotPath: '',
+    id: key === 1 ? 'catalog' : `type_${key}`,
     action: 'extract',
-    pattern: '/',
-  },
-])
+    pattern: '',
+  }
+}
+const pages = ref([newPage(form.value.url)])
 const busy = ref(false),
   error = ref(''),
   suggestion = ref(null)
@@ -26,6 +29,32 @@ let generation = 0,
   request = 0
 const stamp = computed(() =>
   JSON.stringify({ pages: pages.value, goal: form.value.aiGoal, proxy: form.value.proxyRevision }),
+)
+const patternError = computed(() => {
+  if (pages.value.length === 1 || pages.value.some((page) => !page.snapshotId)) return ''
+  for (const page of pages.value) {
+    if (!page.pattern.trim() || !page.snapshotPath.startsWith(page.pattern.trim()))
+      return t('scout.product.prefixMismatch', { id: page.id, path: page.snapshotPath })
+    const other = pages.value.find(
+      (candidate) =>
+        candidate !== page &&
+        candidate.pattern.trim() &&
+        page.snapshotPath.startsWith(candidate.pattern.trim()),
+    )
+    if (other)
+      return t('scout.product.prefixOverlap', {
+        path: page.snapshotPath,
+        first: page.id,
+        second: other.id,
+      })
+  }
+  return ''
+})
+const canSuggest = computed(
+  () =>
+    Boolean(form.value.aiGoal.trim()) &&
+    pages.value.every((page) => page.snapshotId) &&
+    !patternError.value,
 )
 watch(
   stamp,
@@ -48,7 +77,7 @@ watch(
 watch(
   () => pages.value[0]?.url,
   (url) => {
-    if (url) form.value.url = url
+    form.value.url = url ?? ''
   },
 )
 onUnmounted(() => {
@@ -56,8 +85,7 @@ onUnmounted(() => {
   request++
 })
 async function suggest() {
-  if (busy.value || pages.value.some((page) => !page.snapshotId) || !form.value.aiGoal.trim())
-    return
+  if (busy.value || !canSuggest.value) return
   const owner = generation,
     token = ++request
   busy.value = true
@@ -67,7 +95,7 @@ async function suggest() {
     snapshot_public_id: page.snapshotId,
     id: page.id,
     action: page.action,
-    match: [{ kind: 'prefix', pattern: page.pattern }],
+    match: [{ kind: 'prefix', pattern: page.pattern.trim() }],
   }))
   try {
     const response = await apiClient.post(
@@ -91,16 +119,6 @@ async function suggest() {
     if (token === request) busy.value = false
   }
 }
-function addPage() {
-  pages.value.push({
-    key: nextKey++,
-    url: '',
-    snapshotId: '',
-    id: `type_${nextKey}`,
-    action: 'extract',
-    pattern: '/',
-  })
-}
 </script>
 <template>
   <section class="scout-section">
@@ -118,7 +136,7 @@ function addPage() {
       type="button"
       class="btn btn-outline-secondary"
       :disabled="disabled || busy || pages.length >= 5"
-      @click="addPage"
+      @click="pages.push(newPage())"
     >
       {{ t('scout.product.addPage') }}</button
     ><label class="scout-input-label mt-3" for="scout-goal"
@@ -132,6 +150,7 @@ function addPage() {
         :disabled="disabled || busy"
       />
     </label>
+    <p v-if="patternError" class="alert alert-warning" role="alert">{{ patternError }}</p>
     <p v-if="error" class="alert alert-warning" role="alert">{{ error }}</p>
     <div class="scout-actions mt-3">
       <button
@@ -144,9 +163,7 @@ function addPage() {
       ><button
         type="button"
         class="btn btn-primary"
-        :disabled="
-          disabled || busy || !form.aiGoal?.trim() || pages.some((page) => !page.snapshotId)
-        "
+        :disabled="disabled || busy || !canSuggest"
         @click="suggest"
       >
         {{ t(busy ? 'scout.product.suggesting' : 'scout.product.suggest') }}
