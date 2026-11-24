@@ -49,6 +49,7 @@ export function useScoutRetention(jobId, runId, cleanupId, onCleanup) {
     itemsRead = 0,
     cleanupRead = 0,
     cleanupItemsRead = 0,
+    visibleItemLimit = 50,
     timer = null,
     clock = null
   const contextStamp = computed(() => JSON.stringify([jobId.value, runId.value]))
@@ -128,6 +129,14 @@ export function useScoutRetention(jobId, runId, cleanupId, onCleanup) {
     previewError.value = null
     itemsError.value = null
   }
+  function applyPolicy(data) {
+    const previous = policy.value?.version
+    policy.value = data
+    if (previous !== undefined && previous !== data.version) {
+      runState.value = null
+      loadRun()
+    }
+  }
   async function loadPolicy(preserve = false) {
     const version = context,
       read = ++policyRead,
@@ -145,7 +154,7 @@ export function useScoutRetention(jobId, runId, cleanupId, onCleanup) {
     }
     const keep = preserve || stamp !== policyStamp.value
     if (previous !== response.data.version) invalidatePreview()
-    policy.value = response.data
+    applyPolicy(response.data)
     policyState.value = 'ready'
     if (!keep) Object.assign(draft, policyValues(response.data))
     if (keep && previous && previous !== response.data.version) policyReview.value = true
@@ -173,7 +182,7 @@ export function useScoutRetention(jobId, runId, cleanupId, onCleanup) {
     const response = await request('PATCH', endpoints.retentionPolicy, body)
     if (!active(version)) return
     if (response.success) {
-      policy.value = response.data
+      applyPolicy(response.data)
       Object.assign(draft, policyValues(response.data))
       saved.value = true
     } else {
@@ -229,7 +238,7 @@ export function useScoutRetention(jobId, runId, cleanupId, onCleanup) {
       await loadRun()
     } else {
       holdError.value = problem(response)
-      if (response.status && response.status < 500) holdIntent.value = null
+      if (requestRejected(response, retry)) holdIntent.value = null
       holdUnavailable.value = response.data?.unavailable || []
       await loadRun()
     }
@@ -285,6 +294,11 @@ export function useScoutRetention(jobId, runId, cleanupId, onCleanup) {
       /* In-memory retry still keeps the same idempotency key. */
     }
   }
+  function requestRejected(response, retry) {
+    // Authentication and throttling can reject a retry before the server looks up its key.
+    if (retry) return [400, 409, 410].includes(response.status)
+    return response.status >= 400 && response.status < 500 && response.status !== 408
+  }
   async function execute(retry = false) {
     if (disposed || busy.value || (!retry && !canExecute.value)) return
     if (!retry) {
@@ -299,20 +313,14 @@ export function useScoutRetention(jobId, runId, cleanupId, onCleanup) {
     const response = await request('POST', endpoints.retentionCleanups, body)
     if (!active(version)) return
     if (response.success) {
-      cleanupItemsRead++
-      cleanupItemsLoading.value = false
-      cleanupItems.value = []
-      cleanupCursor.value = null
-      cleanup.value = response.data
       pending.value = null
       persistPending()
       invalidatePreview()
-      onCleanup(response.data.cleanup_public_id)
-      await loadCleanupItems()
-      schedulePoll()
+      if (cleanupId.value === response.data.cleanup_public_id) await loadCleanup()
+      else await onCleanup(response.data.cleanup_public_id)
     } else {
       cleanupError.value = problem(response, !response.status ? 'uncertain' : 'requestFailed')
-      if (response.status && response.status < 500) {
+      if (requestRejected(response, retry)) {
         pending.value = null
         persistPending()
         if (response.status === 400 || response.status === 409) invalidatePreview()
@@ -320,12 +328,7 @@ export function useScoutRetention(jobId, runId, cleanupId, onCleanup) {
     }
     if (active(version)) busy.value = false
   }
-  function schedulePoll() {
-    clearTimeout(timer)
-    if (cleanup.value && ['queued', 'running'].includes(cleanup.value.status))
-      timer = setTimeout(() => loadCleanup(cleanup.value.cleanup_public_id), 5000)
-  }
-  async function loadCleanup(id = cleanupId.value) {
+  async function loadCleanup(id = cleanupId.value, poll = false) {
     if (!id) return
     clearTimeout(timer)
     const version = context,
@@ -333,32 +336,46 @@ export function useScoutRetention(jobId, runId, cleanupId, onCleanup) {
     const response = await request('GET', endpoints.retentionCleanup(id))
     if (!active(version) || read !== cleanupRead) return
     if (response.success) {
+      const changed = JSON.stringify(cleanup.value) !== JSON.stringify(response.data)
       cleanupError.value = null
       cleanup.value = response.data
-      await loadCleanupItems()
-      schedulePoll()
-    } else cleanupError.value = problem(response)
+      if (!poll || changed || cleanupItemsError.value) await loadCleanupItems()
+      if (response.data.status === 'completed') return
+    } else {
+      cleanupError.value = problem(response)
+      if (response.status && response.status < 500 && response.status !== 429) return
+    }
+    if (active(version) && read === cleanupRead && cleanupId.value === id)
+      timer = setTimeout(() => loadCleanup(id, true), 5000)
   }
   async function loadCleanupItems(append = false) {
-    if (!cleanup.value || cleanupItemsLoading.value) return
+    if (!cleanup.value || (append && (cleanupItemsLoading.value || !cleanupCursor.value))) return
     const version = context,
       read = ++cleanupItemsRead,
       id = cleanup.value.cleanup_public_id
+    const rows = append ? [...cleanupItems.value] : []
+    let cursor = append ? cleanupCursor.value : null
+    if (append) visibleItemLimit = rows.length + 50
     cleanupItemsLoading.value = true
     cleanupItemsError.value = null
-    const response = await request('GET', endpoints.retentionCleanupItems(id), {
-      limit: 50,
-      ...(append && cleanupCursor.value ? { cursor: cleanupCursor.value } : {}),
-    })
-    if (!active(version) || read !== cleanupItemsRead || cleanup.value?.cleanup_public_id !== id)
-      return
+    do {
+      const response = await request('GET', endpoints.retentionCleanupItems(id), {
+        limit: Math.min(200, visibleItemLimit - rows.length),
+        ...(cursor ? { cursor } : {}),
+      })
+      if (!active(version) || read !== cleanupItemsRead || cleanup.value?.cleanup_public_id !== id)
+        return
+      if (!response.success) {
+        cleanupItemsError.value = problem(response)
+        cleanupItemsLoading.value = false
+        return
+      }
+      rows.push(...response.data.items)
+      cursor = response.data.next_cursor || null
+    } while (cursor && rows.length < visibleItemLimit)
+    cleanupItems.value = rows
+    cleanupCursor.value = cursor
     cleanupItemsLoading.value = false
-    if (response.success) {
-      cleanupItems.value = append
-        ? [...cleanupItems.value, ...response.data.items]
-        : response.data.items
-      cleanupCursor.value = response.data.next_cursor || null
-    } else cleanupItemsError.value = problem(response)
   }
   watch(
     [policyStamp, selectionStamp],
@@ -374,9 +391,6 @@ export function useScoutRetention(jobId, runId, cleanupId, onCleanup) {
       context++
       policyRead++
       runRead++
-      cleanupRead++
-      cleanupItemsRead++
-      clearTimeout(timer)
       policy.value = null
       policyState.value = 'loading'
       Object.keys(draft).forEach((key) => delete draft[key])
@@ -392,12 +406,6 @@ export function useScoutRetention(jobId, runId, cleanupId, onCleanup) {
       ownerScope.value = !jobId.value
       scopes.value = ['html', 'exports']
       invalidatePreview()
-      cleanup.value = null
-      cleanupError.value = null
-      cleanupItems.value = []
-      cleanupCursor.value = null
-      cleanupItemsError.value = null
-      cleanupItemsLoading.value = false
       pending.value = null
       try {
         const stored = JSON.parse(
@@ -410,20 +418,26 @@ export function useScoutRetention(jobId, runId, cleanupId, onCleanup) {
       }
       loadPolicy()
       loadRun()
-      if (cleanupId.value) loadCleanup(cleanupId.value)
     },
     { immediate: true, flush: 'sync' },
   )
-  watch(cleanupId, (id) => {
-    if (id && id !== cleanup.value?.cleanup_public_id) {
+  watch(
+    [contextStamp, cleanupId],
+    ([, id]) => {
+      clearTimeout(timer)
       cleanupRead++
       cleanupItemsRead++
+      visibleItemLimit = 50
+      cleanup.value = null
+      cleanupError.value = null
+      cleanupItemsError.value = null
       cleanupItemsLoading.value = false
       cleanupItems.value = []
       cleanupCursor.value = null
-      loadCleanup(id)
-    }
-  })
+      if (id) loadCleanup(id)
+    },
+    { immediate: true, flush: 'sync' },
+  )
   clock = setInterval(() => {
     now.value = Date.now()
   }, 1000)

@@ -68,9 +68,18 @@ const {
   removeField,
 } = useScoutWorkflow()
 const router = useRouter(),
+  schedulePanel = ref(null),
   storageConfirm = ref(false)
+const storageBlocked = computed(
+  () =>
+    loading.value ||
+    busy.value ||
+    storageConfirm.value ||
+    schedulePanel.value?.writing ||
+    schedulePanel.value?.confirming,
+)
 async function openStorage() {
-  if (loading.value || busy.value || storageConfirm.value) return
+  if (storageBlocked.value) return
   const target = {
     path: '/scout/storage',
     query: {
@@ -78,7 +87,7 @@ async function openStorage() {
       ...(scheduleJobId.value && run.value?.public_id ? { run: run.value.public_id } : {}),
     },
   }
-  if (stage.value === 'source' || dirty.value) {
+  if (stage.value === 'source' || dirty.value || schedulePanel.value?.dirty) {
     storageConfirm.value = true
     let yes
     try {
@@ -179,7 +188,7 @@ function openSystemSettings() {
         <button
           type="button"
           class="btn btn-outline-secondary"
-          :disabled="loading || busy || storageConfirm"
+          :disabled="storageBlocked"
           @click="openStorage"
         >
           {{ t('scout.retention.title') }}
@@ -539,6 +548,7 @@ function openSystemSettings() {
         </div>
         <ScoutSchedulePanel
           v-if="scheduleJobId && ['confirm', 'collect', 'result'].includes(stage)"
+          ref="schedulePanel"
           :key="scheduleJobId"
           :job-id="scheduleJobId"
           :plan="schedulePlan"
