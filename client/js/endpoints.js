@@ -1,5 +1,13 @@
 export const scoutEndpoints = {
   health: 'scout/health/',
+  retentionPolicy: 'scout/retention/policy/',
+  runRetention: (id) => `scout/runs/${id}/retention/`,
+  retentionHold: (id) => `scout/runs/${id}/retention/hold/`,
+  retentionPreviews: 'scout/retention/previews/',
+  retentionPreviewItems: (id) => `scout/retention/previews/${id}/items/`,
+  retentionCleanups: 'scout/retention/cleanups/',
+  retentionCleanup: (id) => `scout/retention/cleanups/${id}/`,
+  retentionCleanupItems: (id) => `scout/retention/cleanups/${id}/items/`,
   jobs: 'scout/jobs/',
   schedule: (publicId) => `scout/jobs/${publicId}/schedule/`,
   scheduleOccurrences: (publicId) => `scout/jobs/${publicId}/schedule/occurrences/`,

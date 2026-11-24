@@ -1,5 +1,7 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { confirmAction } from '@/js/utils/confirm.js'
 import { ArrowLeft, ArrowRight, Download, Settings2 } from '@lucide/vue'
 import FormCard from '@/components/FormCard.vue'
 import SelectBox from '@/components/SelectBox.vue'
@@ -65,6 +67,44 @@ const {
   addField,
   removeField,
 } = useScoutWorkflow()
+const router = useRouter(),
+  schedulePanel = ref(null),
+  storageConfirm = ref(false)
+const storageBlocked = computed(
+  () =>
+    loading.value ||
+    busy.value ||
+    storageConfirm.value ||
+    schedulePanel.value?.writing ||
+    schedulePanel.value?.confirming,
+)
+async function openStorage() {
+  if (storageBlocked.value) return
+  const target = {
+    path: '/scout/storage',
+    query: {
+      ...(scheduleJobId.value ? { job: scheduleJobId.value } : {}),
+      ...(scheduleJobId.value && run.value?.public_id ? { run: run.value.public_id } : {}),
+    },
+  }
+  if (stage.value === 'source' || dirty.value || schedulePanel.value?.dirty) {
+    storageConfirm.value = true
+    let yes
+    try {
+      yes = await confirmAction({
+        title: t('scout.retention.leaveTitle'),
+        message: t('scout.retention.leaveMessage'),
+        confirmText: t('scout.retention.leaveConfirm'),
+        cancelText: t('scout.retention.cancel'),
+        variant: 'warning',
+      })
+    } finally {
+      storageConfirm.value = false
+    }
+    if (!yes) return
+  }
+  await router.push(target)
+}
 const { preference } = useThemeMode()
 const selectedTheme = computed({ get: () => preference.value, set: applyThemeModePreference })
 const themeOptions = computed(() =>
@@ -145,6 +185,14 @@ function openSystemSettings() {
         <p class="scout-muted mb-0">{{ t(`scout.workspace.leads.${stage}`) }}</p>
       </div>
       <div class="scout-toolbar">
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          :disabled="storageBlocked"
+          @click="openStorage"
+        >
+          {{ t('scout.retention.title') }}
+        </button>
         <SelectBox
           id="scout-theme"
           v-model="selectedTheme"
@@ -500,6 +548,7 @@ function openSystemSettings() {
         </div>
         <ScoutSchedulePanel
           v-if="scheduleJobId && ['confirm', 'collect', 'result'].includes(stage)"
+          ref="schedulePanel"
           :key="scheduleJobId"
           :job-id="scheduleJobId"
           :plan="schedulePlan"

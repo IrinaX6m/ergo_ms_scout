@@ -243,3 +243,30 @@ test('schedule dates stay on the local calendar day and all server states have t
     for(const reason of OCCURRENCE_REASONS) assert(locales[locale].reasons[reason])
   }
 })
+
+
+test('retention policy validates finite/null periods and result bundle consistency',async()=>{
+ const {validPolicy,policyValues}=await import('../js/retentionState.js')
+ const policy={version:4,html_days:30,result_days:365,export_days:7,keep_latest_results:2,automatic_enabled:false,visual_snapshot_hours:1}
+ assert(validPolicy(policy));assert(validPolicy({...policy,result_days:null}));assert(validPolicy({...policy,html_days:null,export_days:null}))
+ for(const change of [{html_days:0},{html_days:''},{export_days:1.5},{result_days:20},{keep_latest_results:1},{keep_latest_results:101},{automatic_enabled:'false'}])assert.equal(validPolicy({...policy,...change}),false)
+ assert.equal('version' in policyValues(policy),false);assert.equal('visual_snapshot_hours' in policyValues(policy),false)
+})
+
+test('retention cleanup uses a current server manifest and the same explicit request key',async()=>{
+ const {previewSelection,currentPreview,cleanupRequest,retentionBytes,retentionCount}=await import('../js/retentionState.js')
+ assert.deepEqual(previewSelection(3,'job',['results','visual_snapshots','html']),{policy_version:3,job_public_id:'job',scopes:['html','results']})
+ const preview={preview_public_id:'preview',manifest_hash:'server-hash',policy_version:3,executable:true,expires_at:'2026-11-23T20:15:00Z'}
+ const now=Date.parse('2026-11-23T20:00:00Z')
+ assert(currentPreview(preview,{version:3},false,now));assert.equal(currentPreview(preview,{version:4},false,now),false);assert.equal(currentPreview(preview,{version:3},true,now),false);assert.equal(currentPreview({...preview,executable:false},{version:3},false,now),false);assert.equal(currentPreview(preview,{version:3},false,Date.parse(preview.expires_at)),false)
+ assert.deepEqual(cleanupRequest(preview,'stable-key'),{preview_public_id:'preview',manifest_hash:'server-hash',idempotency_key:'stable-key'})
+ assert.equal(retentionBytes(null),'—');assert.equal(retentionCount(0),'0')
+})
+
+test('all retention UI labels and server protection reasons have translations',async()=>{
+ const {default:locales}=await import('../js/retentionLocales.js')
+ function keys(value,prefix=''){return Object.entries(value).flatMap(([key,child])=>typeof child==='object'?keys(child,prefix+key+'.'):[prefix+key]).sort()}
+ assert.deepEqual(keys(locales.ru),keys(locales.en));assert.deepEqual(keys(locales.ru),keys(locales.fr))
+ const {RETENTION_SCOPES,PROTECTION_REASONS}=await import('../js/retentionState.js')
+ for(const lang of Object.values(locales)){for(const scope of RETENTION_SCOPES)assert(lang.scopes[scope]);for(const reason of PROTECTION_REASONS)assert(lang.reasons[reason])}
+})
