@@ -11,7 +11,7 @@ import { retentionCount } from '../js/retentionState.js'
 import messages from '../js/comparisonLocales.js'
 const route = useRoute(),
   router = useRouter(),
-  { t, locale } = useAppI18n(),
+  { t, te, locale } = useAppI18n(),
   uid = useId()
 const selection = computed(() => ({
   base: route.query.base,
@@ -36,7 +36,9 @@ const {
   loadPair,
   compare,
   swap,
-} = useScoutComparison(selection, (query) => router.replace({ query }))
+} = useScoutComparison(selection, (query) =>
+  router.replace({ query: { ...route.query, ...query } }),
+)
 const summaries = computed(() =>
   result.value ? { base: result.value.base, target: result.value.target } : pair.value,
 )
@@ -61,13 +63,16 @@ function problemText(problem) {
     Object.hasOwn(messages.ru.errors, problem.key) ? problem.key : 'requestFailed',
   )
 }
+function stopReasonLabel(reason) {
+  const key = `scout.stopReasons.${reason}`
+  return t(te(key) ? key : 'scout.comparison.unknown')
+}
 function resultRoute(side, storage = false) {
+  const jobId = side.job_public_id || result.value?.job_public_id
   return {
     path: storage ? '/scout/storage' : '/scout',
     query: {
-      ...(result.value?.job_public_id || pair.value?.target.job_public_id
-        ? { job: result.value?.job_public_id || pair.value.target.job_public_id }
-        : {}),
+      ...(jobId ? { job: jobId } : {}),
       run: side.run_public_id || side.public_id,
     },
   }
@@ -212,7 +217,7 @@ function resultRoute(side, storage = false) {
             <div v-if="side.stop_reason">
               <dt>{{ t('scout.comparison.stopReason') }}</dt>
               <dd>
-                {{ label('stopReasons', side.stop_reason) }}
+                {{ stopReasonLabel(side.stop_reason) }}
                 <details>
                   <summary>{{ t('scout.comparison.technical') }}</summary>
                   <code>{{ side.stop_reason }}</code>

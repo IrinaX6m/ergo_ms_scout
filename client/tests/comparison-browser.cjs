@@ -125,11 +125,16 @@ module.exports = async (browser, output) => {
       .nth(1)
       .getByText('Не подтверждён повторным частичным сбором', { exact: true })
       .waitFor()
-    assert(
-      (
-        await page.getByRole('region', { name: 'Повторный сбор', exact: true }).innerText()
-      ).includes('Достигнут лимит страниц'),
-    )
+    const later = page.getByRole('region', { name: 'Повторный сбор', exact: true })
+    await later.getByText('Достигнут потолок страниц; результат частичный.').waitFor()
+    for (const [code, label] of [
+      ['frontier', 'Достигнут лимит очереди адресов; результат частичный.'],
+      ['bytes', 'Достигнут лимит объёма HTML; результат частичный.'],
+    ]) {
+      await page.evaluate((value) => (window.__scoutTest.comparison.stopReason = value), code)
+      await compare.click()
+      await later.getByText(label).waitFor()
+    }
     await page.evaluate(() => {
       window.__scoutTest.comparison.partial = false
       window.__scoutTest.comparison.empty = true
@@ -145,6 +150,7 @@ module.exports = async (browser, output) => {
       window.__scoutTest.comparison.empty = false
       window.__scoutTest.comparison.error = 409
     })
+    await field.fill('zero')
     await compare.click()
     await page
       .getByText('Нужны запуски одного задания и плана с поддерживаемым явным ключом.', {
@@ -152,7 +158,16 @@ module.exports = async (browser, output) => {
       })
       .waitFor()
     assert.equal(await base.inputValue(), origin + '/scout?run=' + ids.base)
-    await page.evaluate(() => (window.__scoutTest.comparison.error = 0))
+    await page.reload()
+    await page.waitForFunction(() => document.querySelector('input[list]')?.value === 'zero')
+    assert.equal(await base.inputValue(), origin + '/scout?run=' + ids.base)
+    assert.equal(await target.inputValue(), origin + '/scout?run=' + ids.target)
+    assert.equal(
+      await page.evaluate(() =>
+        window.__scoutTest.comparison.calls.some(([url]) => url.endsWith('/compare/')),
+      ),
+      false,
+    )
     await compare.click()
     await rows.first().waitFor()
     await page.evaluate(() => (window.__scoutTest.comparison.error = 410))
@@ -179,6 +194,18 @@ module.exports = async (browser, output) => {
       })
       .waitFor()
     assert(await compare.isDisabled())
+    for (const [title, job, run] of [
+      ['Исходный сбор', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', ids.base],
+      ['Повторный сбор', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', ids.target],
+    ]) {
+      const links = page.getByRole('region', { name: title, exact: true }).getByRole('link')
+      assert.equal(await links.count(), 2)
+      for (const link of await links.all()) {
+        const query = new URLSearchParams((await link.getAttribute('href')).split('?')[1])
+        assert.equal(query.get('job'), job)
+        assert.equal(query.get('run'), run)
+      }
+    }
     await page.evaluate(() => (window.__scoutTest.comparison.incompatible = false))
     await check.click()
     await page.waitForFunction(() => !document.querySelector('input[list]').disabled)

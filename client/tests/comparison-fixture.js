@@ -16,6 +16,7 @@ export function installComparisonFixture(api, fixture) {
     error: 0,
     incompatible: false,
     partial: false,
+    stopReason: 'max_pages',
     empty: false,
     uncertain: false,
     defer: false,
@@ -77,7 +78,7 @@ export function installComparisonFixture(api, fixture) {
           run_public_id: targetId,
           status: state.partial ? 'completed_with_errors' : 'completed',
           completeness: state.partial ? 'partial' : 'complete',
-          stop_reason: state.partial ? 'max_pages' : '',
+          stop_reason: state.partial ? state.stopReason : '',
           failed_tasks: state.partial ? 1 : 0,
           record_count: 4,
           unkeyed_records: 1,
@@ -166,7 +167,8 @@ export function installComparisonFixture(api, fixture) {
       })
     return ok({
       public_id: url.includes(baseId) ? baseId : targetId,
-      job_public_id: job,
+      job_public_id:
+        state.incompatible && url.includes(baseId) ? 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' : job,
       plan_hash: state.incompatible && url.includes(baseId) ? 'other-plan' : 'same-plan',
       status: 'completed',
       record_count: 3,

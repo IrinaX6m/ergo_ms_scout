@@ -159,7 +159,6 @@ export function useScoutComparison(routeSelection, persist) {
       result.value = response.data
       changes.value = append ? [...changes.value, ...response.data.changes] : response.data.changes
       cursor.value = response.data.next_cursor || null
-      persist({ base, target, field })
     } else {
       error.value = problem(response)
       if (response.status === 410) {
@@ -181,13 +180,26 @@ export function useScoutComparison(routeSelection, persist) {
       const base = validRunId(value.base) ? value.base.toLowerCase() : null,
         target = validRunId(value.target) ? value.target.toLowerCase() : null,
         field = typeof value.field === 'string' ? value.field : ''
+      const pairChanged = ids.value.base !== base || ids.value.target !== target
       if (ids.value.base !== base) draft.base = resultLink(base, origin)
       if (ids.value.target !== target) draft.target = resultLink(target, origin)
-      if (draft.field !== field) draft.field = field
-      if (base && target && base !== target && !pair.value) loadPair()
+      if (draft.field.trim() !== field.trim()) draft.field = field
+      if (pairChanged && validLinks.value) loadPair()
     },
     { immediate: true },
   )
+  watch(inputStamp, () => {
+    const { base, target } = ids.value
+    const field = draft.field.trim()
+    const current = routeSelection.value
+    if (
+      base === (current.base ?? null) &&
+      target === (current.target ?? null) &&
+      field === (current.field ?? '')
+    )
+      return
+    persist({ base: base || undefined, target: target || undefined, field: field || undefined })
+  })
   onUnmounted(() => {
     disposed = true
     pairRequest++

@@ -122,10 +122,6 @@ export default {
       invalid_cursor: 'Курсор не подходит к выбранным запускам и полю. Повторите сравнение.',
       comparison_data_expired: 'Данные одной из сторон больше недоступны для сравнения.',
     },
-    stopReasons: {
-      max_pages: 'Достигнут лимит страниц',
-      time: 'Достигнут лимит времени',
-    },
   },
   en: {
     title: 'Compare two collections',
@@ -247,10 +243,6 @@ export default {
       comparison_incompatible: 'Runs must share a job, plan and supported explicit key.',
       invalid_cursor: 'The cursor does not match the selected runs and field. Restart comparison.',
       comparison_data_expired: 'One side is no longer available for comparison.',
-    },
-    stopReasons: {
-      max_pages: 'Page limit reached',
-      time: 'Time limit reached',
     },
   },
   fr: {
@@ -381,10 +373,6 @@ export default {
       invalid_cursor:
         'Le curseur ne correspond pas aux exécutions et au champ. Recommencez la comparaison.',
       comparison_data_expired: 'Un côté n’est plus disponible pour la comparaison.',
-    },
-    stopReasons: {
-      max_pages: 'Limite de pages atteinte',
-      time: 'Limite de temps atteinte',
     },
   },
 }
