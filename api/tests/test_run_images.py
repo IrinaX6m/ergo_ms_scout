@@ -58,7 +58,7 @@ class RunImageTests(TestCase):
         def image(url, **_kwargs):
             if url == _PHOTO:
                 return {'content_type': 'image/png', 'body': _PNG}
-            raise FetchError('unsupported_image', 'Файл другого типа', retryable=False)
+            raise FetchError('bad_encoding', 'Сжатый ответ не распаковывается', retryable=False)
 
         page = {'body': _HTML, 'status': 200, 'final_url': _FINAL, 'content_type': 'text/html', 'charset': 'utf-8'}
         files = self.enterContext(TemporaryDirectory())

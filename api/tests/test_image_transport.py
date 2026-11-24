@@ -2,6 +2,7 @@
 
 import gzip
 import io
+import zlib
 from base64 import b64decode
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -9,7 +10,7 @@ from unittest.mock import Mock, patch
 from django.test import SimpleTestCase
 from urllib3.response import HTTPResponse
 
-from modules.scout.api.services import proxy_http, public_http
+from modules.scout.api.services import http_fetch, proxy_http, public_http
 from modules.scout.api.services.errors import FetchError
 
 
@@ -65,6 +66,22 @@ class ImageTransportTests(SimpleTestCase):
                     return_value=_connection(body, 'image/jpeg', headers=headers)), self.assertRaises(FetchError) as error:
                 public_http.fetch_public_image(_URL, timeout_seconds=2, max_bytes=len(_JPEG) - 1)
             self.assertEqual(error.exception.code, 'too_large')
+
+    def test_gzip_read_failure_is_reported_as_bad_encoding(self):
+        compressed = gzip.compress(_JPEG)
+        stream = Mock()
+        stream.read.side_effect = zlib.error('incorrect compressed data')
+        with (
+            patch.object(http_fetch, '_gzip_stream', return_value=stream),
+            patch.object(public_http, '_connect_public', return_value=_connection(
+                compressed, 'image/jpeg', headers=('Content-Encoding: gzip',),
+            )),
+            self.assertRaises(FetchError) as error,
+        ):
+            public_http.fetch_public_image(_URL, timeout_seconds=2, max_bytes=1024)
+        self.assertEqual(error.exception.code, 'bad_encoding')
+        self.assertFalse(error.exception.retryable)
+        stream.close.assert_called_once_with()
 
     def test_redirects_share_the_download_deadline_and_return_the_final_url(self):
         final = 'http://images.example/photo.png'

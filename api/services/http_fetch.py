@@ -235,13 +235,13 @@ def _read_capped(stream, max_bytes: int) -> bytes:
     body = b''
     try:
         body = stream.read(max_bytes + 1)
-    except (OSError, EOFError) as exc:
+    except (OSError, EOFError, zlib.error) as exc:
         error = exc
     close = getattr(stream, 'close', None)
     if close:
         try:
             close()
-        except (OSError, EOFError) as exc:
+        except (OSError, EOFError, zlib.error) as exc:
             error = error or exc
     if error is not None:
         raise FetchError('bad_encoding', _('Сжатый ответ не распаковывается'), retryable=False) from error
