@@ -3,12 +3,12 @@ import { onBeforeUnmount, ref } from 'vue'
 import { useAppI18n } from '@/i18n/useAppI18n.js'
 import { apiClient } from '@/js/api/manager'
 import { downloadBlob, extractFilenameFromHeaders } from '@/js/utils/file-helpers.js'
-import { scoutEndpoints } from '../js/endpoints.js'
 
 const props = defineProps({
-  snapshotId: { type: String, required: true },
-  treeVersion: { type: String, required: true },
-  nodeId: { type: String, required: true },
+  endpoint: { type: String, required: true },
+  params: { type: Object, default: () => ({}) },
+  filenameStem: { type: String, required: true },
+  saved: Boolean,
 })
 const { t } = useAppI18n()
 const pending = ref(false)
@@ -39,16 +39,13 @@ async function download() {
   pending.value = true
   message.value = ''
   try {
-    const response = await apiClient.downloadFile(
-      scoutEndpoints.visualSnapshotImage(props.snapshotId),
-      {
-        node_id: props.nodeId,
-        tree_version: props.treeVersion,
-      },
-    )
+    const response = await apiClient.downloadFile(props.endpoint, props.params)
     if (!active) return
     if (!response.success) {
-      message.value = errorByStatus[response.status] || 'failed'
+      message.value =
+        props.saved && [404, 409, 410].includes(response.status)
+          ? 'savedUnavailable'
+          : errorByStatus[response.status] || 'failed'
       return
     }
     const image = response.data
@@ -59,7 +56,7 @@ async function download() {
     }
     const filename = extractFilenameFromHeaders(
       response.headers,
-      `scout-${props.nodeId}.${extension}`,
+      `${props.filenameStem}.${extension}`,
     )
     downloadBlob(image, filename)
     message.value = 'started'

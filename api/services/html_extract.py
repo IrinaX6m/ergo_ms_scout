@@ -11,6 +11,7 @@ from lxml.etree import XPathError, _Comment, _ProcessingInstruction
 from ..contracts.envelope import PROTOCOL_VERSION, build_extract_request
 from .constants import EXTRACTOR_ID, EXTRACTOR_VERSION, FIELD_TEXT_LIMIT
 from .errors import ScoutError
+from .image_sources import image_source
 from .value_types import legacy_values, typed_cell
 
 _SPACE = re.compile(r'\s+')
@@ -24,7 +25,7 @@ _XML_ENCODING = re.compile(r'\bencoding\s*=\s*["\']([A-Za-z0-9._-]+)["\']')
 
 def extract_html(body: bytes, rules: list[dict], record=None, content_type: str = '', charset: str = '',
                  *, require_match: bool = False, sku_field: str | None = None,
-                 identity_url: str | None = None) -> list[dict]:
+                 identity_url: str | None = None, source_url: str = '') -> list[dict]:
     request = build_extract_request(rules)
     if request['protocol_version'] != PROTOCOL_VERSION:
         raise ScoutError('bad_contract', 'protocol')
@@ -45,14 +46,16 @@ def extract_html(body: bytes, rules: list[dict], record=None, content_type: str 
         targets = containers
     keyed = sku_field is not None or identity_url is not None
     actual_evidence = require_match or keyed
-    shared = [_cell(root, rule, relative=False, actual_evidence=actual_evidence, sku_field=sku_field, keyed=keyed)
+    shared = [_cell(root, rule, relative=False, actual_evidence=actual_evidence, sku_field=sku_field,
+                    keyed=keyed, source_url=source_url)
               for rule in page_rules]
     has_conversion = any('conversion' in rule for rule in rules)
     rows = []
     for index, node in enumerate(targets):
         values = {}
         evidence = []
-        relative_cells = [_cell(node, rule, relative=True, actual_evidence=actual_evidence, sku_field=sku_field, keyed=keyed)
+        relative_cells = [_cell(node, rule, relative=True, actual_evidence=actual_evidence, sku_field=sku_field,
+                                keyed=keyed, source_url=source_url)
                           for rule in record_rules]
         for rule, cell in zip(page_rules + record_rules, shared + relative_cells):
             _put(values, evidence, rule, cell, index, typed_evidence=keyed)
@@ -165,14 +168,19 @@ def _containers(root, record):
     return elements
 
 
-def _cell(node, rule: dict, *, relative: bool, actual_evidence: bool, sku_field: str | None, keyed=False) -> dict:
+def _cell(node, rule: dict, *, relative: bool, actual_evidence: bool, sku_field: str | None,
+          keyed: bool, source_url: str) -> dict:
     target = _isolate(node) if relative else node
     is_sku = rule['name'] == sku_field
     found = _nodes(target, rule, relative=relative, raw_result=is_sku)
     matches = _coerce(found) if is_sku else found
-    cell = cell_from_matches(
-        matches, many=rule.get('many'), conversion=rule.get('conversion'), collect_evidence=keyed,
-    )
+    if rule.get('value_source') == 'image':
+        matches = [url for _, url in image_matches(matches, source_url)]
+        cell = image_cell(matches, many=rule.get('many'), collect_evidence=keyed)
+    else:
+        cell = cell_from_matches(
+            matches, many=rule.get('many'), conversion=rule.get('conversion'), collect_evidence=keyed,
+        )
     if actual_evidence and not matches:
         cell['parts'] = []
     if is_sku:
@@ -207,10 +215,23 @@ def cell_from_matches(matches, *, many, conversion=None, collect_evidence=False)
     return cell
 
 
+def image_matches(nodes, source_url):
+    return [(node, url) for node in nodes if (url := image_source(node, source_url))]
+
+
+def image_cell(urls, *, many, collect_evidence=False):
+    chosen = list(dict.fromkeys(urls)) if many else urls[:1]
+    cell = cell_from_matches(chosen, many=many, collect_evidence=collect_evidence)
+    cell['images'] = [{'source_url': url, 'status': 'candidate'} for url in chosen]
+    return cell
+
+
 def _put(values, evidence, rule, cell, index: int, *, typed_evidence: bool) -> None:
     values[rule['name']] = {'raw': cell['raw'], 'normalized': cell['normalized']}
     if 'typed' in cell:
         values[rule['name']]['typed'] = cell['typed']
+    if 'images' in cell:
+        values[rule['name']]['images'] = cell['images']
     parts = cell['evidence_texts'] if typed_evidence else cell['parts']
     for part_index, text in enumerate(parts):
         part = text[:FIELD_TEXT_LIMIT]

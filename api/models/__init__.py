@@ -124,6 +124,18 @@ class Run(PublicIdMixin, models.Model):
         ordering = ['-created_at']
 
 
+class RunImage(PublicIdMixin, models.Model):
+    run = models.ForeignKey(Run, on_delete=models.CASCADE, related_name='images')
+    source_url = models.TextField()
+    url_hash = models.CharField(max_length=64)
+    content_type = models.CharField(max_length=40)
+    byte_size = models.PositiveIntegerField()
+    body = models.BinaryField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['run', 'url_hash'], name='scout_run_image_url')]
+
+
 class Task(PublicIdMixin, models.Model):
     run = models.ForeignKey(Run, on_delete=models.CASCADE, related_name='tasks')
     kind = models.CharField(max_length=16)

@@ -134,8 +134,9 @@ const gaps = computed(() =>
   shownPreview.value.reduce(
     (count, row) =>
       count +
-      Object.values(row.values || {}).filter((cell) => (cell?.normalized ?? cell?.raw ?? '') === '')
-        .length,
+      Object.values(row.values || {}).filter(
+        (cell) => !cell?.images?.length && (cell?.normalized ?? cell?.raw ?? '') === '',
+      ).length,
     0,
   ),
 )
@@ -450,7 +451,7 @@ function openSystemSettings() {
                   t('scout.flow.recent', { shown: shownRecords.length, total: progress.records })
                 }}
               </h3>
-              <ScoutRecordsTable :records="shownRecords" preview
+              <ScoutRecordsTable :records="shownRecords" :run-id="run.public_id" preview
             /></template>
           </div>
           <template #footer
@@ -503,7 +504,7 @@ function openSystemSettings() {
             <p v-if="!records.length && !recordsError && !recordsLoading" class="scout-muted">
               {{ t('scout.flow.resultEmpty') }}
             </p>
-            <ScoutRecordsTable v-if="records.length" :records="records" />
+            <ScoutRecordsTable v-if="records.length" :records="records" :run-id="run.public_id" />
           </div>
           <template #footer
             ><button

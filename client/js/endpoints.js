@@ -25,6 +25,8 @@ export const scoutEndpoints = {
   resume: (publicId) => `scout/runs/${publicId}/resume/`,
   cancel: (publicId) => `scout/runs/${publicId}/cancel/`,
   records: (publicId) => `scout/runs/${publicId}/records/`,
+  runImage: (runId, imageId) =>
+    `scout/runs/${encodeURIComponent(runId)}/images/${encodeURIComponent(imageId)}/`,
   exportRun: (publicId) => `scout/runs/${publicId}/export/`,
 }
 

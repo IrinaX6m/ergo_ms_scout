@@ -74,7 +74,10 @@ class VisualSnapshotCheckView(BaseAPIView):
             data = _request_object(request.data)
             check_tree_version(snapshot, data.get('tree_version', MISSING))
             document = VisualDocument(bytes(snapshot.body), snapshot.charset)
-            result = document.check(source_url=snapshot.source_url, record=data.get('record'), field=data.get('field'))
+            result = document.check(
+                source_url=snapshot.final_url or snapshot.source_url,
+                record=data.get('record'), field=data.get('field'),
+            )
         except ScoutError as exc:
             return Response(error_payload(exc), status=409 if exc.code == 'tree_version_changed' else error_status(exc),
                             headers={'Cache-Control': 'no-store'})

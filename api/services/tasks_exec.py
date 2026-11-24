@@ -45,6 +45,7 @@ from .public_http import fetch_public_html, fetch_public_xml, fetch_public_text,
 from .proxy_profiles import PROXY_RETRY_DELAYS
 from .fetch_failures import STOP_FETCH_FAILURES
 from .journal import append_event, append_events, describe_extract
+from .run_images import prepare_run_images, store_run_images
 from .runs import advance_run, _finish_if_idle
 from .snapshot_store import read_snapshot_bytes, store_snapshot_bytes
 
@@ -405,6 +406,7 @@ def _extract(task: Task, token: int) -> None:
         record=revision.record or None,
         content_type=snapshot.content_type,
         charset=snapshot.charset,
+        source_url=snapshot.final_url or snapshot.source_url,
         require_match=has_types,
         **identity_extract_options(snapshot, revision),
     )
@@ -422,8 +424,10 @@ def _extract(task: Task, token: int) -> None:
     )
     if has_types and not rows:
         lines.insert(0, 'Страница подходит под тип извлечения, но ни одна запись не найдена.')
+    images = prepare_run_images(task, rows) if any(field.get('value_source') == 'image' for field in fields) else {}
 
     def write():
+        store_run_images(task.run_id, images)
         if revision.identity:
             store_identity_rows(snapshot, revision, schema, rules, rows)
         else:

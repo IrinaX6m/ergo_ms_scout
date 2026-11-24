@@ -1,5 +1,6 @@
 export default {
   ru: {
+    collectedImages: 'Собранных изображений к удалению: {count}. Объём: {size}.',
     title: 'Хранение и очистка',
     back: 'Вернуться к Scout',
     lead: 'Сроки и очистка только ваших данных. Настройки хранения не меняют план сбора или его расписание.',
@@ -197,6 +198,7 @@ export default {
     waitOperation: 'Дождитесь ответа на текущую операцию перед переходом.',
   },
   en: {
+    collectedImages: 'Collected images to delete: {count}. Size: {size}.',
     title: 'Storage and cleanup',
     back: 'Back to Scout',
     lead: 'Retention and cleanup of your own data. Storage settings do not change collection plans or schedules.',
@@ -392,6 +394,7 @@ export default {
     waitOperation: 'Wait for the current operation to respond before leaving.',
   },
   fr: {
+    collectedImages: 'Images collectées à supprimer : {count}. Taille : {size}.',
     title: 'Conservation et nettoyage',
     back: 'Retour à Scout',
     lead: 'Conservation et nettoyage de vos données uniquement. Ces paramètres ne modifient ni le plan ni sa programmation.',

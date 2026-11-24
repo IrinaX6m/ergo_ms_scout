@@ -34,6 +34,7 @@ const { t } = useAppI18n()
             ><code>{{ field.kind }}: {{ field.selector || t('scout.workspace.notSpecified') }}</code
             ><span class="scout-muted small">
               {{ field.scope === 'record' ? t('scout.scopeRecord') : t('scout.scopePage') }}
+              <template v-if="field.value_source === 'image'"> · {{ t('scout.visual.image.field') }}</template>
               <template v-if="field.conversion">
                 · {{ t(`scout.product.${field.conversion.type}`) }}
                 <code>{{ JSON.stringify(field.conversion) }}</code></template

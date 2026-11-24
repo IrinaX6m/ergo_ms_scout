@@ -36,7 +36,7 @@ export function installVisualFixture(apiClient, fixture, result) {
     Array.from(
       { length: 20 },
       (_, index) =>
-        `<article data-scout-node="n${index * 3 + 1}"><h3 data-scout-node="n${index * 3 + 2}">Book ${index + 1}</h3><p data-scout-node="n${index * 3 + 3}">£51.77</p>${index === 0 ? '<span data-scout-node="n61"></span>' : ''}</article>`,
+        `<article data-scout-node="n${index * 3 + 1}"><h3 data-scout-node="n${index * 3 + 2}">Book ${index + 1}</h3><p data-scout-node="n${index * 3 + 3}">£51.77</p>${index === 0 ? '<span data-scout-node="n61" data-scout-image>Изображение</span>' : ''}</article>`,
     ).join('') +
     '<script>parent.__snapshotScriptRan=true</script></body></html>'
   function defer(kind, response) {
@@ -53,7 +53,7 @@ export function installVisualFixture(apiClient, fixture, result) {
     return { success: false, status: visual.error, data: { detail: 'Fixture visual error' } }
   }
   apiClient.downloadFile = async (url, params, ...args) => {
-    if (!url.startsWith('scout/visual-snapshots/') || !url.endsWith('/image/'))
+    if (!/^scout\/(visual-snapshots\/[^/]+\/image|runs\/[^/]+\/images\/[^/]+)\/$/.test(url))
       return originalDownload(url, params, ...args)
     fixture.calls.push(['download', url, { ...params }])
     if (visual.imageError) return { success: false, status: visual.imageError }
@@ -140,15 +140,23 @@ export function installVisualFixture(apiClient, fixture, result) {
     const field = body.field
       ? { ...body.field, kind: 'css', selector: body.field.selector || '.price_color' }
       : null
-    if (field) delete field.node_id
+    if (field) {
+      if (field.node_id === 'n61') {
+        field.value_source = 'image'
+        field.selector = 'img'
+      }
+      delete field.node_id
+    }
     const count = field?.selector === '.absent' ? 0 : field?.selector === 'p' ? 2 : 1
     const rows = Array.from({ length: record ? 20 : 1 }, (_, index) => ({
       node_id: record ? `n${index * 3 + 1}` : null,
       ...(field
         ? {
             match_count: count,
-            match_node_ids: count ? [`n${index * 3 + 3}`] : [],
-            value: count ? { raw: '£51.77', normalized: '£51.77' } : null,
+            match_node_ids: count ? [field.value_source === 'image' ? 'n61' : `n${index * 3 + 3}`] : [],
+            value: field.value_source === 'image'
+              ? { images: [{ source_url: 'https://books.toscrape.com/cover.png', status: 'candidate' }] }
+              : count ? { raw: '£51.77', normalized: '£51.77' } : null,
           }
         : {}),
     }))

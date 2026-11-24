@@ -9,7 +9,8 @@ import { useVisualSnapshot } from '../js/useVisualSnapshot.js'
 import { matchSummary, visualPlanStamp } from '../js/visualState.js'
 import { displayValue } from '../js/recordTable.js'
 import ScoutSnapshotFrame from './ScoutSnapshotFrame.vue'
-import ScoutSnapshotImageDownload from './ScoutSnapshotImageDownload.vue'
+import ScoutImageDownload from './ScoutImageDownload.vue'
+import { scoutEndpoints } from '../js/endpoints.js'
 import ScoutPrototypeTree from '../prototypes/ScoutPrototypeTree.vue'
 import { useInspectorTree, nodeLabel } from '../prototypes/useInspectorTree.js'
 
@@ -319,6 +320,7 @@ function body(nodeId) {
       name: draft.name.trim(),
       scope: form.value.recordMode === 'page' ? 'page' : draft.scope,
       many: draft.many,
+      ...(!nodeId && draft.value_source === 'image' ? { value_source: 'image' } : {}),
       ...(nodeId ? { node_id: nodeId } : { kind: 'css', selector: draft.selector.trim() }),
     },
   }
@@ -336,7 +338,7 @@ async function verify(nodeId) {
   if (!response || (props.inspectorPrototype && tree.invalid.value)) return
   applying = true
   if (target.value === 'record') recordSelector.value = response.record?.selector || ''
-  else Object.assign(draft, response.field)
+  else Object.assign(draft, { value_source: undefined }, response.field)
   applying = false
   result.value = response
   checkedStamp.value = candidateStamp.value
@@ -396,6 +398,7 @@ function cancelSelection() {
   recordSelector.value = form.value.recordSelector || ''
   Object.assign(draft, {
     name: `field_${fields.value.length + 1}`,
+    value_source: undefined,
     selector: '',
     many: false,
     scope: form.value.recordMode === 'cards' ? 'record' : 'page',
@@ -419,7 +422,8 @@ function accept() {
   }
   const field = { ...result.value.field }
   const previousField = form.value.fields[editing.value]
-  if (previousField?.conversion && !field.many) field.conversion = previousField.conversion
+  if (previousField?.conversion && !field.many && field.value_source !== 'image')
+    field.conversion = previousField.conversion
   if (previousField?.typeSelectors) field.typeSelectors = previousField.typeSelectors
   const duplicate = form.value.fields.findIndex(
     (item, index) => item.name === field.name && index !== editing.value,
@@ -666,7 +670,7 @@ function removeField(index) {
             <p class="small">
               {{ tree.detail.value.node.text_preview || t('scout.inspector.noText') }}
             </p>
-            <ScoutSnapshotImageDownload
+            <template
               v-if="
                 !tree.loading.value &&
                 !tree.invalid.value &&
@@ -675,11 +679,17 @@ function removeField(index) {
                 tree.detail.value.snapshot_public_id === snapshot.public_id &&
                 tree.detail.value.tree_version === snapshot.tree_version
               "
-              :key="`${snapshot.public_id}/${snapshot.tree_version}/${selectedNode}`"
-              :snapshot-id="snapshot.public_id"
-              :tree-version="snapshot.tree_version"
-              :node-id="selectedNode"
-            />
+            >
+              <p v-if="target === 'field' && !checked" class="small">
+                {{ t('scout.visual.image.pickField') }}
+              </p>
+              <ScoutImageDownload
+                :key="`${snapshot.public_id}/${snapshot.tree_version}/${selectedNode}`"
+                :endpoint="scoutEndpoints.visualSnapshotImage(snapshot.public_id)"
+                :params="{ tree_version: snapshot.tree_version, node_id: selectedNode }"
+                :filename-stem="`scout-${selectedNode}`"
+              />
+            </template>
             <nav class="scout-visual-ancestors" :aria-label="t('scout.inspector.parents')">
               <button
                 v-for="node in tree.detail.value.ancestors"
@@ -831,6 +841,9 @@ function removeField(index) {
             <p v-if="target === 'field'">
               {{ t('scout.visual.matches', { count: summary.matches }) }}
             </p>
+            <p v-if="result.field?.value_source === 'image'" class="small">
+              {{ t('scout.visual.image.fieldHint') }}
+            </p>
             <p v-if="!acceptable" class="scout-warning" role="status">
               {{ t('scout.visual.notFound') }}
             </p>
@@ -879,8 +892,10 @@ function removeField(index) {
           <p v-if="!fields.length" class="scout-muted small">{{ t('scout.visual.noFields') }}</p>
           <ul class="scout-visual-fields">
             <li v-for="field in fields" :key="field.index">
-              <strong>{{ field.name }}</strong
-              ><code>{{ field.selector }}</code>
+              <strong>
+                {{ field.name }}<template v-if="field.value_source === 'image'"> · {{ t('scout.visual.image.field') }}</template>
+              </strong>
+              <code>{{ field.selector }}</code>
               <small
                 v-if="inspectorPrototype"
                 class="scout-field-verification"

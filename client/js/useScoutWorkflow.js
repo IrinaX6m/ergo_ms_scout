@@ -104,6 +104,7 @@ export function useScoutWorkflow() {
         selector: field.selector.trim(),
         scope: cards && field.scope === 'record' ? 'record' : 'page',
         many: field.many,
+        ...(field.value_source === 'image' ? { value_source: 'image' } : {}),
         ...(field.conversion ? { conversion: field.conversion } : {}),
       })),
       crawl: {

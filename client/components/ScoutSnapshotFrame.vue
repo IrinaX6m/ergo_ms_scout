@@ -43,6 +43,21 @@ function attach() {
   cleanup()
   const document = frame.value?.contentDocument
   if (!document?.body) return
+  // A local stylesheet makes even an image without alt text a visible selection target.
+  if ('adoptedStyleSheets' in document && document.querySelector('[data-scout-image]')) {
+    const sheet = new frame.value.contentWindow.CSSStyleSheet()
+    sheet.replaceSync(`
+      [data-scout-image] {
+        display: inline-block;
+        padding: .25em .5em;
+        border: 1px dashed currentColor;
+        border-radius: .25em;
+        cursor: pointer;
+      }
+      [data-scout-image]:focus-visible { outline: 2px solid Highlight; }
+    `)
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
+  }
   // Scripts remain disabled by sandbox. Parent listeners only read server-issued node IDs.
   const scheme = document.createElement('meta')
   scheme.name = 'color-scheme'

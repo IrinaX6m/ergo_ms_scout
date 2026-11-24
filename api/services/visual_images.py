@@ -1,8 +1,7 @@
 """Загрузка файла только для явно выбранного изображения сохранённого снимка."""
 
-from urllib.parse import urldefrag, urljoin, urlsplit
-
 from .errors import FetchError, ScoutError
+from .image_sources import image_source
 from .proxy_http import fetch_proxy_image
 from .public_http import fetch_public_image
 
@@ -16,17 +15,9 @@ def image_url(document, uid, base):
         raise ScoutError('node_not_found', 'Элемент отсутствует в снимке')
     if node.tag != 'img':
         raise ScoutError('image_source_unavailable', 'Выберите элемент img в снимке')
-    for attr in ('data-src', 'data-lazy-src', 'data-original', 'src'):
-        value = (node.get(attr) or '').strip()
-        if not value or value.startswith('#') or any(ord(c) < 32 or c == '\\' for c in value):
-            continue
-        try:
-            url = urldefrag(urljoin(base, value)).url
-            parts = urlsplit(url)
-            if parts.scheme in ('http', 'https') and parts.hostname:
-                return url
-        except ValueError:
-            continue
+    url = image_source(node, base)
+    if url:
+        return url
     raise ScoutError('image_source_unavailable', 'У изображения нет адреса для скачивания')
 
 

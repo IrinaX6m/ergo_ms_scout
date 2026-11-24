@@ -2,10 +2,11 @@
 
 import re
 
+from django.utils.translation import gettext as _
 from lxml import etree, html
 
 from .errors import ScoutError
-from .html_extract import _css_to_xpath, _nodes, _parse, cell_from_matches
+from .html_extract import _css_to_xpath, _nodes, _parse, cell_from_matches, image_cell, image_matches
 from .plan import normalize_plan
 
 _SAFE_TAGS = frozenset('''
@@ -77,7 +78,8 @@ class VisualDocument:
         target = etree.SubElement(parent, tag, {'data-scout-node': node_id})
         self._copy_children(node, target)
         if node.tag == 'img':
-            target.text = node.get('alt')
+            target.set('data-scout-image', '')
+            target.text = (node.get('alt') or '').strip() or _('Изображение')
         return target
 
     def editor_html(self):
@@ -122,23 +124,23 @@ class VisualDocument:
         if field_rule is not None:
             if field_rule['scope'] == 'page':
                 matches = _nodes(self.root, field_rule, relative=False)
-                result = self._field_result(matches, field_rule)
+                result = self._field_result(matches, field_rule, source_url)
                 for row in rows:
                     row.update(result)
             else:
                 select = etree.XPath(_css_to_xpath(field_rule['selector'], relative=True))
                 for row, card in zip(rows, sample):
-                    row.update(self._field_result(select(card), field_rule))
+                    row.update(self._field_result(select(card), field_rule, source_url))
                 if len(cards) > len(sample) and not any(row['match_count'] for row in rows):
                     sampled = set(sample)
                     for card in cards:
                         if card in sampled:
                             continue
-                        matches = select(card)
-                        if matches:
+                        result = self._field_result(select(card), field_rule, source_url)
+                        if result['match_count']:
                             # Keep a card explicitly selected in the editor.
                             del rows[-2 if sample[-1] is selected_card else -1]
-                            rows.append({'node_id': self.ids.get(card), **self._field_result(matches, field_rule)})
+                            rows.append({'node_id': self.ids.get(card), **result})
                             break
 
         return {'record': record, 'field': field_rule, 'row_count': len(cards), 'rows': rows}
@@ -174,15 +176,25 @@ class VisualDocument:
         result = {'kind': 'css', 'selector': selector}
         if not is_record:
             result.update(name=data['name'], scope=data['scope'], many=data['many'])
+            if node is not None:
+                if node.tag == 'img':
+                    result['value_source'] = 'image'
+            elif 'value_source' in data:
+                result['value_source'] = data['value_source']
         return result, node
 
     def _suggest(self, node, context, *, relative, is_record):
         tag = node.tag if _CSS_NAME.fullmatch(node.tag) else ''
         classes = [name for name in node.get('class', '').split() if _CSS_NAME.fullmatch(name)]
-        candidates = [f'{tag if is_record else ""}.{name}' for name in classes[:8]]
+        prefix = tag if is_record or tag == 'img' else ''
+        candidates = [f'{prefix}.{name}' for name in classes[:8]]
         name = node.get('id', '')
         if _CSS_NAME.fullmatch(name):
-            candidates.append(f'#{name}')
+            id_selector = f'{"img" if tag == "img" else ""}#{name}'
+            if tag == 'img' and not relative:
+                candidates.insert(0, id_selector)
+            else:
+                candidates.append(id_selector)
         if tag:
             candidates.append(tag)
 
@@ -199,7 +211,15 @@ class VisualDocument:
             return fallback
         raise ScoutError('selector_not_suggested', 'Для этого элемента не удалось предложить селектор')
 
-    def _field_result(self, matches, rule):
+    def _field_result(self, matches, rule, source_url):
+        if rule.get('value_source') == 'image':
+            found = image_matches(matches, source_url)
+            cell = image_cell([url for _, url in found], many=rule['many'])
+            return {
+                'match_count': len(found),
+                'match_node_ids': [self.ids[node] for node, _ in found if node in self.ids][:_SAMPLE_LIMIT],
+                'value': {key: cell[key] for key in ('raw', 'normalized', 'images')} if found else None,
+            }
         ids = [self.ids[node] for node in matches if node in self.ids][:_SAMPLE_LIMIT]
         value = None
         if matches:
