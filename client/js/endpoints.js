@@ -15,6 +15,7 @@ export const scoutEndpoints = {
   visualSnapshots: 'scout/visual-snapshots/',
   visualSnapshot: (publicId) => `scout/visual-snapshots/${publicId}/`,
   checkVisualSnapshot: (publicId) => `scout/visual-snapshots/${publicId}/check/`,
+  visualSnapshotImage: (publicId) => `scout/visual-snapshots/${publicId}/image/`,
   job: (publicId) => `scout/jobs/${publicId}/`,
   explore: (publicId) => `scout/jobs/${publicId}/explore/`,
   run: (publicId) => `scout/runs/${publicId}/`,

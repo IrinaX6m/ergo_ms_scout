@@ -9,6 +9,7 @@ import { useVisualSnapshot } from '../js/useVisualSnapshot.js'
 import { matchSummary, visualPlanStamp } from '../js/visualState.js'
 import { displayValue } from '../js/recordTable.js'
 import ScoutSnapshotFrame from './ScoutSnapshotFrame.vue'
+import ScoutSnapshotImageDownload from './ScoutSnapshotImageDownload.vue'
 import ScoutPrototypeTree from '../prototypes/ScoutPrototypeTree.vue'
 import { useInspectorTree, nodeLabel } from '../prototypes/useInspectorTree.js'
 
@@ -665,6 +666,20 @@ function removeField(index) {
             <p class="small">
               {{ tree.detail.value.node.text_preview || t('scout.inspector.noText') }}
             </p>
+            <ScoutSnapshotImageDownload
+              v-if="
+                !tree.loading.value &&
+                !tree.invalid.value &&
+                tree.detail.value.node.tag === 'img' &&
+                tree.detail.value.node.node_id === selectedNode &&
+                tree.detail.value.snapshot_public_id === snapshot.public_id &&
+                tree.detail.value.tree_version === snapshot.tree_version
+              "
+              :key="`${snapshot.public_id}/${snapshot.tree_version}/${selectedNode}`"
+              :snapshot-id="snapshot.public_id"
+              :tree-version="snapshot.tree_version"
+              :node-id="selectedNode"
+            />
             <nav class="scout-visual-ancestors" :aria-label="t('scout.inspector.parents')">
               <button
                 v-for="node in tree.detail.value.ancestors"

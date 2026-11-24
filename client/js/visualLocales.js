@@ -1,5 +1,17 @@
 export default {
   ru: {
+    image: {
+      download: 'Скачать изображение',
+      loading: 'Скачиваем изображение…',
+      started: 'Файл передан браузеру для сохранения.',
+      denied: 'Для скачивания нужен доступ к снимку.',
+      reload: 'Снимок изменился или истёк. Загрузите страницу заново и выберите изображение.',
+      tooLarge: 'Изображение превышает допустимый размер.',
+      unsupported: 'Для скачивания поддерживаются JPEG, PNG, GIF и WebP.',
+      unavailable: 'Адрес изображения отсутствует или недоступен для скачивания.',
+      rateLimit: 'Достигнут лимит запросов. Попробуйте позже.',
+      failed: 'Не удалось скачать изображение. Повторите попытку.',
+    },
     versionChanged:
       'Версия снимка изменилась. Загрузите страницу заново и перепроверьте принятые поля.',
     sourceHint: 'Загрузите сохранённый снимок страницы и выберите нужные элементы.',
@@ -44,6 +56,18 @@ export default {
     rateLimit: 'Достигнут лимит загрузок. Попробуйте позже.',
   },
   en: {
+    image: {
+      download: 'Download image',
+      loading: 'Downloading image…',
+      started: 'The file was sent to your browser for saving.',
+      denied: 'You need access to the snapshot to download the image.',
+      reload: 'The snapshot changed or expired. Reload the page and select the image again.',
+      tooLarge: 'The image exceeds the size limit.',
+      unsupported: 'Supported downloads are JPEG, PNG, GIF and WebP.',
+      unavailable: 'The image URL is missing or unavailable for download.',
+      rateLimit: 'The request limit has been reached. Try again later.',
+      failed: 'Could not download the image. Try again.',
+    },
     versionChanged: 'The snapshot version changed. Reload and recheck accepted fields.',
     sourceHint: 'Load a saved page snapshot and select the elements you need.',
     load: 'Load page',
@@ -85,6 +109,18 @@ export default {
     rateLimit: 'The page load limit has been reached. Try again later.',
   },
   fr: {
+    image: {
+      download: 'Télécharger l’image',
+      loading: 'Téléchargement de l’image…',
+      started: 'Le fichier a été transmis au navigateur pour enregistrement.',
+      denied: 'L’accès à l’instantané est nécessaire pour télécharger l’image.',
+      reload: 'L’instantané a changé ou a expiré. Rechargez la page et sélectionnez l’image.',
+      tooLarge: 'L’image dépasse la taille autorisée.',
+      unsupported: 'Les formats pris en charge sont JPEG, PNG, GIF et WebP.',
+      unavailable: 'L’adresse de l’image est absente ou inaccessible au téléchargement.',
+      rateLimit: 'La limite de requêtes est atteinte. Réessayez plus tard.',
+      failed: 'Impossible de télécharger l’image. Réessayez.',
+    },
     versionChanged: 'La version a changé. Rechargez et vérifiez les champs acceptés.',
     sourceHint: 'Chargez un instantané de la page et sélectionnez les éléments souhaités.',
     load: 'Charger la page',

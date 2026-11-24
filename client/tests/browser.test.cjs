@@ -38,6 +38,7 @@ async function main() {
   })
   let page
   try {
+    await require('./image-browser.cjs')(browser, output)
     await require('./inspector-browser.cjs')(browser, output)
     await require('./visual-browser.cjs')(browser, output)
     await require('./product-browser.cjs')(browser, output)

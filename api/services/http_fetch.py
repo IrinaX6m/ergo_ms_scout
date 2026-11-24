@@ -20,6 +20,21 @@ from .url_norm import canonical_host
 logger = logging.getLogger('modules.scout')
 
 _HTML_TYPES = ('text/html', 'application/xhtml+xml')
+IMAGE_EXTENSIONS = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp'}
+
+
+def _require_html(media):
+    if media and media not in _HTML_TYPES:
+        raise FetchError('not_html', _('Ответ не является HTML'), retryable=False)
+
+
+def _require_image(media):
+    if media not in IMAGE_EXTENSIONS:
+        raise _unsupported_image()
+
+
+def _unsupported_image():
+    return FetchError('unsupported_image', _('Источник не вернул изображение JPEG, PNG, GIF или WebP'), retryable=False)
 
 
 class _LimitedRedirect(urlrequest.HTTPRedirectHandler):
@@ -46,11 +61,34 @@ class _LimitedRedirect(urlrequest.HTTPRedirectHandler):
 def fetch_html(url: str, *, timeout_seconds: int, max_bytes: int, url_allowed=None, handlers=()) -> dict:
     result = _fetch_response(
         url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, url_allowed=url_allowed,
-        handlers=handlers, accept='text/html,application/xhtml+xml', media_types=_HTML_TYPES,
+        handlers=handlers, accept='text/html,application/xhtml+xml', check_media=_require_html,
     )
     content_type = result['content_type']
     result['charset'] = detected_charset(result['body'], content_type)[:40]
     result['content_type'] = content_type[:120]
+    return result
+
+
+def fetch_image(url: str, *, timeout_seconds: int, max_bytes: int, url_allowed=None, handlers=()) -> dict:
+    result = _fetch_response(
+        url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, url_allowed=url_allowed,
+        handlers=handlers, accept=','.join(IMAGE_EXTENSIONS), check_media=_require_image,
+    )
+    media = result['content_type'].split(';', 1)[0].strip().lower()
+    body = result['body']
+    if body.startswith(b'\xff\xd8\xff'):
+        detected = 'image/jpeg'
+    elif body.startswith(b'\x89PNG\r\n\x1a\n'):
+        detected = 'image/png'
+    elif body.startswith((b'GIF87a', b'GIF89a')):
+        detected = 'image/gif'
+    elif body.startswith(b'RIFF') and body[8:12] == b'WEBP' and body[12:16] in (b'VP8 ', b'VP8L', b'VP8X'):
+        detected = 'image/webp'
+    else:
+        raise _unsupported_image()
+    if detected != media:
+        raise _unsupported_image()
+    result['content_type'] = media
     return result
 
 
@@ -68,7 +106,7 @@ def fetch_text(url: str, *, timeout_seconds: int, max_bytes: int, url_allowed=No
     )
 
 
-def _fetch_response(url, *, timeout_seconds, max_bytes, url_allowed, handlers, accept, media_types=()) -> dict:
+def _fetch_response(url, *, timeout_seconds, max_bytes, url_allowed, handlers, accept, check_media=None) -> dict:
     if url_allowed is not None and not url_allowed(url):
         raise FetchError('url_scope', _('Адрес выходит за пределы плана'), retryable=False)
     opener = urlrequest.build_opener(_LimitedRedirect(url_allowed), *handlers)
@@ -82,9 +120,8 @@ def _fetch_response(url, *, timeout_seconds, max_bytes, url_allowed, handlers, a
             final_url = response.geturl()
             content_type = response.headers.get('Content-Type', '')
             raise_for_challenge(headers=response.headers, url=final_url or url)
-            media = content_type.split(';', 1)[0].strip().lower()
-            if media_types and media and media not in media_types:
-                raise FetchError('not_html', _('Ответ не является HTML'), retryable=False)
+            if check_media is not None:
+                check_media(content_type.split(';', 1)[0].strip().lower())
             encoding = response.headers.get('Content-Encoding', '')
             body = _unwrap_content(_read_limited(response, max_bytes, status), encoding, max_bytes)
             raise_for_challenge(headers=response.headers, url=final_url or url, body=body, content_type=content_type)

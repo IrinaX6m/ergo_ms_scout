@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPHandler, HTTPSHandler, ProxyHandler
 
 from .errors import FetchError
-from .http_fetch import fetch_html, fetch_xml, fetch_text
+from .http_fetch import fetch_html, fetch_image, fetch_xml, fetch_text
 
 _IPV6_UNICAST = ipaddress.ip_network('2000::/3')
 _DNS_SLOTS = BoundedSemaphore(8)
@@ -57,6 +57,12 @@ def fetch_public_html(url, *, timeout_seconds, max_bytes, url_allowed=None, whol
     )
 
 
+def fetch_public_image(url, *, timeout_seconds, max_bytes):
+    return _fetch_public(
+        fetch_image, url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, url_allowed=None, whole_timeout=True,
+    )
+
+
 def fetch_public_xml(url, *, timeout_seconds, max_bytes, url_allowed=None, whole_timeout=False):
     return _fetch_public(
         fetch_xml, url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, url_allowed=url_allowed,
@@ -77,10 +83,16 @@ def _fetch_public(fetch, url, *, timeout_seconds, max_bytes, url_allowed, whole_
 
     guard = SocketDeadline(timeout_seconds) if whole_timeout else nullcontext()
     with guard as deadline:
-        return fetch(
+        result = fetch(
             url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, url_allowed=target_allowed,
             handlers=(ProxyHandler({}), _PublicHTTPHandler(deadline), _PublicHTTPSHandler(deadline)),
         )
+        if deadline is not None:
+            try:
+                deadline.remaining()
+            except TimeoutError:
+                raise FetchError('network', 'Время загрузки истекло', retryable=True) from None
+        return result
 
 
 class SocketDeadline:
