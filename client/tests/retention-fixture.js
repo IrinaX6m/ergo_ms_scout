@@ -37,6 +37,7 @@ export function installRetentionFixture(api, fixture) {
     defer: false,
     release: null,
     cleanupDone: false,
+    cleanupRows: 1,
   })
   const previous = api._request.bind(api)
   api._request = async (method, url, body = {}, token = true, config = {}, options = {}) => {
@@ -65,7 +66,13 @@ export function installRetentionFixture(api, fixture) {
         hold: state.hold,
         results_availability: 'available',
         html_availability: 'available',
-        eligible_at: { html: '2026-12-23T20:00:00Z', results: '2027-11-23T20:00:00Z' },
+        eligible_at: {
+          html:
+            state.policy.html_days === null
+              ? null
+              : new Date(Date.UTC(2026, 10, 23 + state.policy.html_days, 20)).toISOString(),
+          results: '2027-11-23T20:00:00Z',
+        },
         protected: {
           html: state.hold.scope === 'all' ? 'hold' : null,
           results: state.hold.scope ? 'hold' : 'latest_results',
@@ -197,21 +204,25 @@ export function installRetentionFixture(api, fixture) {
       }
       return ok(state.cleanup)
     }
-    if (url.includes('/cleanups/') && url.endsWith('/items/'))
+    if (url.includes('/cleanups/') && url.endsWith('/items/')) {
+      const offset = Number(body.cursor || 0),
+        count = Math.min(body.limit, state.cleanupRows - offset)
+      if (body.limit > 200) return fail(400, 'invalid_limit')
       return ok({
-        items: [
-          {
-            kind: 'results',
-            public_id: 'old-run',
-            status: state.cleanupDone ? 'deleted' : 'pending',
-            reason: '',
-            deleted_bytes: state.cleanupDone ? 1024 : 0,
-            deleted_rows: state.cleanupDone ? 60 : 0,
-          },
-        ],
-        next_cursor: null,
+        items: Array.from({ length: count }, (_, index) => ({
+          kind: 'results',
+          public_id: 'item-' + (offset + index + 1),
+          status: state.cleanupDone ? 'deleted' : 'pending',
+          reason: '',
+          deleted_bytes: state.cleanupDone ? 1024 : 0,
+          deleted_rows: state.cleanupDone ? 60 : 0,
+        })),
+        next_cursor: offset + count < state.cleanupRows ? String(offset + count) : null,
       })
+    }
     if (url.includes('/cleanups/')) {
+      if (!state.cleanup || !url.endsWith('/' + state.cleanup.cleanup_public_id + '/'))
+        return fail(404, 'notFound')
       if (state.cleanupDone)
         state.cleanup = {
           ...state.cleanup,
@@ -221,7 +232,7 @@ export function installRetentionFixture(api, fixture) {
           deleted_bytes: 1024,
           deleted_rows: 60,
         }
-      return state.cleanup ? ok(state.cleanup) : fail(404, 'notFound')
+      return ok(state.cleanup)
     }
     return fail(404, 'notFound')
   }

@@ -609,6 +609,15 @@ watch(
       </section></FormCard
     >
     <ScoutRetentionError :problem="cleanupError" />
+    <button
+      v-if="cleanupId && cleanupError && !cleanup"
+      type="button"
+      class="btn btn-outline-secondary"
+      :disabled="blocked"
+      @click="loadCleanup()"
+    >
+      {{ t('scout.retention.retryStatus') }}
+    </button>
     <div v-if="pending" class="alert alert-warning" role="status">
       <p>{{ t('scout.retention.pendingRequest') }}</p>
       <button

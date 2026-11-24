@@ -115,6 +115,11 @@ async function main() {
     await ui.getByRole('button', { name: 'К подтверждению', exact: true }).click()
     await ui.getByRole('button', { name: 'Подтвердить план и запустить', exact: true }).click()
     await ui.getByRole('button', { name: 'Пауза', exact: true }).waitFor()
+    const schedule = ui.locator('.scout-schedule')
+    await schedule.locator('summary').first().click()
+    await schedule.getByText('Расписание ещё не создано.', { exact: true }).waitFor()
+    assert(await schedule.getByRole('button', { name: 'Создать расписание' }).isEnabled())
+    await schedule.locator('summary').first().click()
     const mutations = await page.evaluate(() =>
       window.__scoutTest.calls
         .filter(([method, url]) => method === 'post' && /\/(approve|start)\/$/.test(url))
@@ -149,6 +154,18 @@ async function main() {
       window.__scoutTest.setStatus('completed')
     })
     await ui.getByRole('heading', { name: 'Завершён', exact: true }).waitFor()
+    const scheduleSummary = ui.locator('.scout-schedule summary').first()
+    await scheduleSummary.click()
+    const scheduleTime = ui.getByLabel('Время каждый день', { exact: true })
+    const originalTime = await scheduleTime.inputValue()
+    const changedTime = originalTime === '10:15' ? '10:30' : '10:15'
+    await scheduleTime.fill(changedTime)
+    await ui.getByRole('button', { name: 'Хранение и очистка', exact: true }).click()
+    await page.getByRole('button', { name: 'Отмена', exact: true }).click()
+    assert.equal(await scheduleTime.inputValue(), changedTime)
+    assert.equal(await page.evaluate(() => location.hash.includes('/storage')), false)
+    await scheduleTime.fill(originalTime)
+    await scheduleSummary.click()
     await ui
       .getByRole('button', { name: 'Происхождение поля «title»: Событие 1', exact: true })
       .click()

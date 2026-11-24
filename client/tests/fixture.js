@@ -102,7 +102,13 @@ apiClient.patch = async (url, body) => {
   fixture.job = {
     public_id: publicId,
     title: body.title,
-    revision: { ...clone(body), limits, plan_hash: 'fixture-plan', approved: false },
+    revision: {
+      ...clone(body),
+      limits,
+      public_id: 'fixture-revision',
+      plan_hash: 'fixture-plan',
+      approved: false,
+    },
   }
   return result(fixture.job)
 }
@@ -131,7 +137,10 @@ apiClient.post = async (url, body) => {
     fixture.failAction = ''
     return { success: false, message: 'Fixture rejection' }
   }
-  if (action === 'approve') fixture.run.approved = true
+  if (action === 'approve') {
+    fixture.run.approved = true
+    fixture.job.revision.approved = true
+  }
   if (action === 'start') {
     fixture.run.status = 'running'
     fixture.run.record_count = 25

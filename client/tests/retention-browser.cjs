@@ -66,6 +66,9 @@ module.exports = async (browser, output) => {
       .check()
     await policy().getByRole('button', { name: 'Сохранить сроки', exact: true }).click()
     await page.waitForFunction(() => window.__scoutTest.retention.policy.html_days === null)
+    await section('Защита открытого результата')
+      .getByText('Срок не назначен', { exact: true })
+      .waitFor()
     await policy()
       .getByRole('checkbox', {
         name: 'Разрешить автоматическую очистку по этим срокам',
@@ -197,14 +200,53 @@ module.exports = async (browser, output) => {
       .getByRole('button', { name: 'Повторить тот же запрос очистки', exact: true })
       .waitFor()
     const first = (await mutations()).filter((c) => c[1] === 'scout/retention/cleanups/').at(-1)[2]
-    await page.getByRole('button', { name: 'Повторить тот же запрос очистки', exact: true }).click()
-    await page.getByRole('heading', { name: /Операция очистки/ }).waitFor()
+    const retryCleanup = page.getByRole('button', {
+      name: 'Повторить тот же запрос очистки',
+      exact: true,
+    })
+    for (const status of [401, 429]) {
+      await page.evaluate((code) => (window.__scoutTest.retention.error = code), status)
+      await retryCleanup.click()
+      assert.deepEqual((await mutations()).at(-1)[2], first)
+      assert(await retryCleanup.isVisible())
+      assert(
+        await page.evaluate(
+          (key) => Object.values(sessionStorage).some((entry) => entry.includes(key)),
+          first.idempotency_key,
+        ),
+      )
+    }
+    await page.evaluate(() => {
+      const state = window.__scoutTest.retention
+      state.error = 0
+      state.cleanup.status = 'completed_with_errors'
+      state.cleanupRows = 215
+    })
+    await retryCleanup.click()
+    const retrying = section('Операция очистки · Завершена с ошибками')
+    for (const last of [100, 150, 200, 215]) {
+      await retrying.getByRole('button', { name: 'Загрузить следующую порцию', exact: true }).click()
+      await retrying.getByText('item-' + last, { exact: true }).waitFor()
+    }
     const second = (await mutations()).filter((c) => c[1] === 'scout/retention/cleanups/').at(-1)[2]
     assert.deepEqual(second, first)
     await page.evaluate(() => (window.__scoutTest.retention.cleanupDone = true))
-    await page.getByRole('button', { name: 'Обновить состояние операции', exact: true }).click()
     await page.getByRole('heading', { name: 'Операция очистки · Завершена', exact: true }).waitFor()
-    assert((await section('Операция очистки · Завершена').innerText()).includes('60'))
+    const completed = section('Операция очистки · Завершена')
+    await completed
+      .locator('li')
+      .filter({ hasText: 'item-215' })
+      .getByText('Удалено', { exact: true })
+      .waitFor()
+    assert.equal(await completed.locator('li').count(), 215)
+    assert((await completed.innerText()).includes('60'))
+    await page.goto(url + '&cleanup=missing')
+    await page.getByRole('button', { name: 'Обновить состояние операции', exact: true }).waitFor()
+    assert.equal(await page.getByRole('heading', { name: /Операция очистки/ }).count(), 0)
+    await page.goto(url + '&cleanup=cleanup-one')
+    await completed.waitFor()
+    await page.goto(url)
+    await completed.waitFor({ state: 'hidden' })
     // Test the saved exact request on a real browser reload without executing an unknown new request.
     await page.evaluate(
       (body) =>
