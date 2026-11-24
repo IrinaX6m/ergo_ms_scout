@@ -331,6 +331,8 @@ def _create_revision(job: Job, number: int, plan: dict) -> JobRevision:
     for schema_field, field in zip(schema_fields, plan['fields']):
         if 'conversion' in field:
             schema_field['type'] = field['conversion']['type']
+        elif field.get('value_source') == 'image':
+            schema_field['type'] = 'image'
     ExtractionSchemaRevision.objects.create(
         job_revision=revision,
         fields=schema_fields,

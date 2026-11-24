@@ -91,6 +91,15 @@ def normalize_plan(seed_urls, fields, limits=None, record=None, crawl=None, *, i
             'scope': scope,
             'many': bool(item.get('many')),
         }
+        value_source = item.get('value_source', 'text')
+        if value_source not in ('text', 'image'):
+            raise ScoutError('invalid', _('Источник значения поля: текст или изображение'),
+                             path=f'/fields/{len(clean_fields)}/value_source')
+        if value_source == 'image':
+            if 'conversion' in item:
+                raise ScoutError('invalid', _('Преобразование нельзя применить к изображению'),
+                                 path=f'/fields/{len(clean_fields)}/conversion')
+            field['value_source'] = 'image'
         if 'conversion' in item:
             field['conversion'] = clean_conversion(item['conversion'], many=field['many'])
         clean_fields.append(field)
@@ -132,7 +141,7 @@ def _clean_identity(raw, fields: list[dict], record=None) -> dict:
         return {'kind':'url','namespace':namespace}
     name = raw.get('field')
     field = next((field for field in fields if field['name'] == name), None)
-    if not field or field['many'] or 'conversion' in field:
+    if not field or field['many'] or 'conversion' in field or field.get('value_source') == 'image':
         raise ScoutError('invalid_identity', _('Укажите одиночное текстовое поле SKU'), path='/identity/field')
     return {'kind': kind, 'namespace': namespace, 'field': name}
 

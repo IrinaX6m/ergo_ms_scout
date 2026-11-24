@@ -143,6 +143,7 @@ module.exports = async (browser, output) => {
     assert(await deletion().isDisabled())
     assert((await preview().innerText()).includes('Неизвестно'))
     assert((await preview().innerText()).includes('сравнение'))
+    await preview().getByText(/Собранных изображений к удалению: 2\. Объём: 500/).waitFor()
     await preview().getByRole('button', { name: 'Загрузить следующую порцию', exact: true }).click()
     await preview()
       .getByText('Общий файл защищён другими ссылками', { exact: true })

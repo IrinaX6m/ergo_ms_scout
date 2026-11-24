@@ -42,12 +42,31 @@ const fixture = {
 }
 const clone = (value) => JSON.parse(JSON.stringify(value))
 const result = (data) => ({ success: true, data: clone(data) })
-const rows = (length = 25) =>
+function imageCells(index, preview) {
+  const cells = {}
+  for (const field of fixture.job?.revision?.fields || []) {
+    if (field.value_source !== 'image') continue
+    const image = {
+      source_url: 'https://books.toscrape.com/cover.png',
+      status: preview ? 'candidate' : ['saved', 'failed', 'limit'][index % 3],
+    }
+    if (image.status === 'saved')
+      Object.assign(image, {
+        public_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        content_type: 'image/png',
+        byte_size: 69,
+      })
+    cells[field.name] = { images: [image] }
+  }
+  return cells
+}
+const rows = (length = 25, preview = false) =>
   Array.from({ length }, (_, index) => ({
     public_id: `record-${index + 1}`,
     values: {
       title: { raw: `Событие ${index + 1}`, normalized: `Событие ${index + 1}` },
       count: { raw: 0, normalized: 0 },
+      ...imageCells(index, preview),
     },
     evidence: [
       {
@@ -124,7 +143,7 @@ apiClient.post = async (url, body) => {
       status: fixture.deferPreview ? 'exploring' : 'awaiting_confirmation',
       record_count: 0,
       snapshot_count: 1,
-      preview: rows().slice(0, 3),
+      preview: rows(3, true),
       tasks: [],
       events: [],
       journal: [],

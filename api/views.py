@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from django.db.models import Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.translation import gettext as _
 from rest_framework.permissions import IsAuthenticated
@@ -23,10 +24,11 @@ from .services.access import jobs_for, require_user_public_id, runs_for
 from .services.constants import RUN_AWAITING
 from .services.errors import ScoutError
 from .services.exporting import export_run
+from .services.http_fetch import IMAGE_EXTENSIONS
 from .services.plan import IDENTITY_UNSET
 from .services.preview import page_type_preview, preview_rows
 from .services.run_comparison import compare_runs
-from .services.retention_locks import result_response
+from .services.retention_locks import read_results, result_response
 from .services.runs import (
     approve_run,
     cancel_run,
@@ -250,6 +252,32 @@ class RunRecordsView(BaseAPIView):
             'records': [record_payload(item, typed=typed) for item in page[:limit]],
             'next_cursor': str(page[limit - 1].public_id) if len(page) > limit else None,
         })
+
+
+class RunImageView(BaseAPIView):
+    permission_classes = [IsAuthenticated, CanViewScout]
+    http_method_names = ['get', 'options']
+
+    def perform_content_negotiation(self, request, force=False):
+        return super().perform_content_negotiation(request, force=True)
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        response['Cache-Control'] = 'no-store'
+        response['X-Content-Type-Options'] = 'nosniff'
+        return response
+
+    def get(self, request, public_id, image_id):
+        run = get_object_or_404(runs_for(request.user), public_id=public_id)
+        try:
+            with read_results(run):
+                image = get_object_or_404(run.images, public_id=image_id)
+                extension = IMAGE_EXTENSIONS[image.content_type]
+                return HttpResponse(bytes(image.body), content_type=image.content_type, headers={
+                    'Content-Disposition': f'attachment; filename="scout-{image.public_id}.{extension}"',
+                })
+        except ScoutError as exc:
+            return Response(error_payload(exc), status=error_status(exc))
 
 
 class RunComparisonView(BaseAPIView):

@@ -7,7 +7,7 @@ from datetime import timedelta
 from uuid import UUID, uuid5, NAMESPACE_URL
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
 from src.core.utils.media_client import get_media_client
@@ -184,6 +184,9 @@ def build_manifest(owner, policy, selection, at):
                              evidence=Evidence.objects.filter(record__run=run).count(),
                              eligible_at=(run.finished_at + timedelta(days=policy.result_days)).isoformat(),
                              hold_version=run.retention_hold_version, exports=export_specs)
+                images = run.images.aggregate(images=Count('pk'), image_bytes=Sum('byte_size'))
+                if images['images']:
+                    spec.update(images)
                 spec['executable'] = all(item['executable'] for item in export_specs)
                 manifest.append(spec)
                 result_selected = True
@@ -278,12 +281,14 @@ def _media_path(artifact):
 
 def preview_summary(manifest, excluded):
     export_files, html_files = {}, {}
-    records = evidence = runs = visual = visual_bytes = 0
+    records = evidence = runs = images = image_bytes = visual = visual_bytes = 0
     for item in manifest:
         if item['kind'] == 'results':
             runs += 1
             records += item['records']
             evidence += item['evidence']
+            images += item.get('images', 0)
+            image_bytes += item.get('image_bytes', 0)
             for artifact in item['exports']:
                 export_files[artifact['path']] = artifact['bytes']
         elif item['kind'] == 'exports':
@@ -298,6 +303,7 @@ def preview_summary(manifest, excluded):
     return {
         'executable': executable,
         'totals': {'runs_with_result_deletion': runs, 'records': records, 'evidence': evidence,
+                   'images': images, 'image_bytes': image_bytes,
                    'html_files': len(html_files), 'export_files': len(export_files), 'visual_snapshots': visual,
                    'file_bytes_reclaimable': sum(sizes) if all(size is not None for size in sizes) else None,
                    'visual_body_bytes': visual_bytes, 'database_bytes_estimate': None},
@@ -343,7 +349,7 @@ def preview_payload(preview):
 
 def public_item(item):
     return {key: value for key, value in item.items() if key in (
-        'kind', 'public_id', 'run_public_id', 'reason', 'records', 'evidence', 'bytes', 'executable',
+        'kind', 'public_id', 'run_public_id', 'reason', 'records', 'evidence', 'images', 'image_bytes', 'bytes', 'executable',
         'eligible_at',
     )} | ({'comparison_will_expire': True, 'export_files': len({row['path'] for row in item['exports']})}
          if item['kind'] == 'results' and 'exports' in item else {})
@@ -582,6 +588,8 @@ def _purge_results(run, item):
             run.retained_counts = {'record_count': run.records.count(),
                                    'evidence_count': Evidence.objects.filter(record__run=run).count(),
                                    'unkeyed_records': run.records.filter(entity_key__isnull=True).count()}
+            if spec.get('images'):
+                run.retained_counts.update(image_count=spec['images'], image_bytes=spec['image_bytes'])
             run.results_availability = 'purging'
             run.save(update_fields=['retained_counts', 'results_availability'])
     remaining = [row for row in spec['exports'] if ExportArtifact.objects.filter(
@@ -604,6 +612,12 @@ def _purge_results(run, item):
         with transaction.atomic():
             Record.objects.filter(pk__in=ids).delete()
             _progress(item, rows=len(ids))
+        return False, ''
+    images = list(run.images.values_list('pk', 'byte_size')[:BATCH_SIZE])
+    if images:
+        with transaction.atomic():
+            run.images.filter(pk__in=[pk for pk, _ in images]).delete()
+            _progress(item, rows=len(images), size=sum(size for _, size in images))
         return False, ''
     Run.objects.filter(pk=run.pk).update(results_availability='expired')
     return True, ''

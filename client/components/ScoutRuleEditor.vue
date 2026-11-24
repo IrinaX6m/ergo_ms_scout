@@ -120,7 +120,8 @@ const scopes = computed(() => [
         <details class="scout-field-rule__options">
           <summary>{{ t('scout.workspace.fieldOptions') }}</summary>
           <div class="scout-field-options">
-            <ScoutConversion v-model="form.fields[index]" :disabled="disabled" />
+            <p v-if="field.value_source === 'image'" class="small">{{ t('scout.visual.image.fieldHint') }}</p>
+            <ScoutConversion v-else v-model="form.fields[index]" :disabled="disabled" />
             <div v-if="form.recordMode === 'cards'" class="scout-input-label">
               <span>{{ t('scout.fieldScope') }}</span>
               <SelectBox

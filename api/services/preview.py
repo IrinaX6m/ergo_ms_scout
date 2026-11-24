@@ -93,6 +93,7 @@ def _snapshot_rows(snapshot, revision, fields, *, require_match=False):
         record=revision.record or None,
         content_type=snapshot.content_type,
         charset=snapshot.charset,
+        source_url=snapshot.final_url or snapshot.source_url,
         require_match=require_match,
         **identity_extract_options(snapshot, revision),
     )

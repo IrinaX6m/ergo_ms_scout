@@ -544,6 +544,14 @@ watch(
             <dd>{{ bytes(preview.totals[key]) }}</dd>
           </div>
         </dl>
+        <p v-if="preview.totals.images > 0" class="scout-muted small">
+          {{
+            t('scout.retention.collectedImages', {
+              count: count(preview.totals.images),
+              size: bytes(preview.totals.image_bytes),
+            })
+          }}
+        </p>
         <p v-for="(warning, index) in preview.warnings" :key="index" class="scout-warning">
           {{
             t(

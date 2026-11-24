@@ -118,6 +118,8 @@ export function installRetentionFixture(api, fixture) {
           totals: {
             runs_with_result_deletion: body.scopes.includes('results') ? 1 : 0,
             records: body.scopes.includes('results') ? 20 : 0,
+            images: body.scopes.includes('results') ? 2 : 0,
+            image_bytes: body.scopes.includes('results') ? 500 : 0,
             evidence: body.scopes.includes('results') ? 40 : 0,
             html_files: body.scopes.includes('results') ? 0 : 1,
             export_files: body.scopes.includes('results') ? 1 : 0,

@@ -5,10 +5,13 @@ import DataTable from '@/components/DataTable.vue'
 import { useRouteQueryState } from '@/composables/useRouteQueryState.js'
 import { useAppI18n } from '@/i18n/useAppI18n.js'
 import { displayValue } from '../js/recordTable.js'
+import { scoutEndpoints } from '../js/endpoints.js'
+import ScoutImageDownload from './ScoutImageDownload.vue'
 
 const props = defineProps({
   records: { type: Array, default: () => [] },
   preview: { type: Boolean, default: false },
+  runId: { type: String, default: '' },
 })
 const { t } = useAppI18n()
 const selected = ref(null)
@@ -58,6 +61,12 @@ watch(
 function selectCell(item, field) {
   selected.value = { record: item.record, field }
 }
+
+function cellLabel(cell) {
+  return cell?.images?.length
+    ? t('scout.visual.image.count', { count: cell.images.length })
+    : displayValue(cell, t('scout.flow.notFound'))
+}
 </script>
 
 <template>
@@ -78,16 +87,33 @@ function selectCell(item, field) {
           :aria-label="
             t('scout.workspace.valueOrigin', {
               field: column.label,
-              value: displayValue(item.record.values?.[column.key], t('scout.flow.notFound')),
+              value: cellLabel(item.record.values?.[column.key]),
             })
           "
           @click="selectCell(item, column.key)"
         >
-          {{ displayValue(item.record.values?.[column.key], t('scout.flow.notFound')) }}
+          {{ cellLabel(item.record.values?.[column.key]) }}
           <small v-if="item.record.values?.[column.key]?.typed" class="d-block scout-muted">{{
             t(`scout.product.typedStatus.${item.record.values[column.key].typed.status}`)
           }}</small>
         </button>
+        <ul v-if="item.record.values?.[column.key]?.images?.length" class="list-unstyled mb-0">
+          <li
+            v-for="(image, index) in item.record.values[column.key].images"
+            :key="image.public_id || index"
+            class="mt-1"
+          >
+            <span class="d-block small text-break">{{ image.source_url }}</span>
+            <span class="d-block small">{{ t(`scout.visual.image.status.${image.status}`) }}</span>
+            <ScoutImageDownload
+              v-if="runId && image.status === 'saved' && image.public_id"
+              :key="`${runId}/${image.public_id}`"
+              :endpoint="scoutEndpoints.runImage(runId, image.public_id)"
+              :filename-stem="`scout-${image.public_id}`"
+              saved
+            />
+          </li>
+        </ul>
       </template>
     </DataTable>
     <section

@@ -267,7 +267,9 @@ function selectExtractionMode(mode) {
             class="form-select"
           >
             <option
-              v-for="field in form.fields.filter((f) => f.name && !f.many && !f.conversion)"
+              v-for="field in form.fields.filter(
+                (f) => f.name && !f.many && !f.conversion && f.value_source !== 'image',
+              )"
               :key="field.name"
               :value="field.name"
             >

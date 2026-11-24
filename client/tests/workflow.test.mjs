@@ -128,8 +128,20 @@ test('visual acceptance is invalidated by source, card and field changes', () =>
     { url: 'https://other.example/' },
     { recordSelector: 'li' },
     { fields: [{ name: 'price', selector: '.other', scope: 'record' }] },
+    { fields: [{ ...form.fields[0], value_source: 'image' }] },
   ])
     assert.notEqual(visualPlanStamp({ ...form, ...changes }), stamp)
+})
+
+test('saved image fields keep their source when reopening a plan and show selected URLs', async () => {
+  const { optionForm } = await import('../js/planOptions.js')
+  const field = {
+    name: 'cover', kind: 'css', selector: 'img', scope: 'page', many: false, value_source: 'image',
+  }
+  assert.deepEqual(optionForm({ fields: [field] }).fields, [field])
+  const url = 'https://example.org/cover'
+  assert.equal(displayValue({ images: [{ source_url: url }] }, 'missing'), url)
+  assert.equal(displayValue({ images: [] }, 'missing'), 'missing')
 })
 
 

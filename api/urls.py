@@ -1,7 +1,7 @@
 from django.urls import path
 
 from .proxy_views import ProxyProfileCheckView, ProxyProfilesView, ProxyProfileView
-from .tree_views import VisualTreeView, VisualTreeNodeView, VisualTreeSearchView
+from .tree_views import VisualImageView, VisualTreeView, VisualTreeNodeView, VisualTreeSearchView
 from .schedule_views import DailyScheduleView, ScheduleOccurrencesView
 from .retention_views import (
     RetentionPolicyView, RunRetentionView, RetentionHoldView, RetentionPreviewsView,
@@ -17,6 +17,7 @@ from .views import (
     RunComparisonView,
     RunDetailView,
     RunExportView,
+    RunImageView,
     RunPauseView,
     RunRecordsView,
     RunResumeView,
@@ -43,6 +44,7 @@ urlpatterns = [
     path('proxy-profiles/<uuid:public_id>/', ProxyProfileView.as_view(), name='scout-proxy-profile'),
     path('proxy-profiles/<uuid:public_id>/check/', ProxyProfileCheckView.as_view(), name='scout-proxy-check'),
     path('visual-snapshots/', VisualSnapshotCreateView.as_view(), name='scout-visual-snapshots'),
+    path('visual-snapshots/<uuid:public_id>/image/', VisualImageView.as_view(), name='scout-visual-image'),
     path('visual-snapshots/<uuid:public_id>/tree/', VisualTreeView.as_view(), name='scout-visual-tree'),
     path('visual-snapshots/<uuid:public_id>/tree/nodes/<str:node_id>/', VisualTreeNodeView.as_view(), name='scout-visual-tree-node'),
     path('visual-snapshots/<uuid:public_id>/tree/search/', VisualTreeSearchView.as_view(), name='scout-visual-tree-search'),
@@ -61,6 +63,7 @@ urlpatterns = [
     path('runs/<uuid:public_id>/resume/', RunResumeView.as_view(), name='scout-run-resume'),
     path('runs/<uuid:public_id>/cancel/', RunCancelView.as_view(), name='scout-run-cancel'),
     path('runs/<uuid:public_id>/records/', RunRecordsView.as_view(), name='scout-run-records'),
+    path('runs/<uuid:public_id>/images/<uuid:image_id>/', RunImageView.as_view(), name='scout-run-image'),
     path('runs/<uuid:public_id>/compare/', RunComparisonView.as_view(), name='scout-run-comparison'),
     path('runs/<uuid:public_id>/export/', RunExportView.as_view(), name='scout-run-export'),
 ]

@@ -9,7 +9,7 @@ from django.core import signing
 
 from .errors import ScoutError
 
-TREE_SCHEMA_VERSION = b'scout-visual-map-v1:dom-metadata-v1'
+TREE_SCHEMA_VERSION = b'scout-visual-map-v1:dom-metadata-v2'
 CURSOR_SALT = 'scout.dom-tree.v1'
 CURSOR_AGE = 15 * 60
 MAX_NODES = 10_000
