@@ -48,6 +48,7 @@ const {
   computed(() => props.plan),
   computed(() => props.planDirty),
 )
+defineExpose({ dirty, writing, confirming })
 const blocked = computed(
   () =>
     props.disabled ||
@@ -57,7 +58,7 @@ const blocked = computed(
     needsReview.value ||
     forbidden.value,
 )
-const canSave = computed(
+const formReady = computed(
   () =>
     !blocked.value &&
     canWrite.value &&
@@ -67,6 +68,8 @@ const canSave = computed(
 const differentPlan = computed(
   () => !!current.value && !!props.plan && !sameSchedulePlan(current.value, props.plan),
 )
+const canSave = computed(() => formReady.value && (!current.value || dirty.value))
+const canRebind = computed(() => formReady.value && differentPlan.value && candidateReady.value)
 const planName = computed(() =>
   !current.value || sameSchedulePlan(current.value, props.plan)
     ? props.plan?.revision_number
@@ -85,7 +88,7 @@ function actionStamp() {
   })
 }
 async function save(bindPlan = false) {
-  if (!canSave.value || (bindPlan && !candidateReady.value)) return
+  if (!(bindPlan ? canRebind.value : canSave.value)) return
   notice.value = ''
   const before = actionStamp()
   if (draft.enabled) {
@@ -221,7 +224,7 @@ async function save(bindPlan = false) {
                   v-model="draft.timezone"
                   :list="`${uid}-zones`"
                   class="form-control"
-                  maxlength="128"
+                  maxlength="80"
                   required
                   :aria-invalid="error?.path === '/timezone'" /><datalist :id="`${uid}-zones`">
                   <option
@@ -265,7 +268,7 @@ async function save(bindPlan = false) {
                 v-if="differentPlan && candidateReady"
                 type="button"
                 class="btn btn-outline-secondary"
-                :disabled="!canSave"
+                :disabled="!canRebind"
                 @click="save(true)"
               >
                 {{ t('scout.schedule.rebind') }}
@@ -338,12 +341,12 @@ async function save(bindPlan = false) {
               </p>
               <dl class="scout-schedule-day-details">
                 <div>
-                  <dt>{{ t('scout.schedule.scheduledAt') }}</dt>
-                  <dd>{{ moment(day.scheduled_at) }}</dd>
+                  <dt>{{ t('scout.schedule.scheduledAt') }} (UTC)</dt>
+                  <dd>{{ scheduleMoment(day.scheduled_at, 'UTC', locale) }}</dd>
                 </div>
                 <div>
-                  <dt>{{ t('scout.schedule.processedAt') }}</dt>
-                  <dd>{{ moment(day.processed_at) }}</dd>
+                  <dt>{{ t('scout.schedule.processedAt') }} (UTC)</dt>
+                  <dd>{{ scheduleMoment(day.processed_at, 'UTC', locale) }}</dd>
                 </div>
                 <div>
                   <dt>{{ t('scout.schedule.historyVersion') }}</dt>

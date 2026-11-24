@@ -38,7 +38,7 @@ export function validScheduleDraft(draft) {
   return (
     /^([01]\d|2[0-3]):[0-5]\d$/.test(draft.local_time) &&
     !!draft.timezone.trim() &&
-    draft.timezone.trim().length <= 128
+    draft.timezone.trim().length <= 80
   )
 }
 export function scheduleWrite(draft, current, plan, bindPlan = false) {

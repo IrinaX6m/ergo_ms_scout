@@ -43,6 +43,10 @@ module.exports = async (browser, output) => {
       plan_hash: 'hash-one',
     })
     await panel.getByText(/Другой сбор занимал общий слот/).waitFor()
+    const save = panel.getByRole('button', { name: 'Сохранить расписание', exact: true })
+    assert(await save.isDisabled())
+    const firstDay = panel.locator('.scout-schedule-days li').first()
+    assert.match(await firstDay.getByText('Плановое время (UTC)').locator('..').innerText(), /06:00/)
     await panel.getByRole('button', { name: 'Загрузить следующие дни', exact: true }).click()
     await panel.getByText(/Такого местного времени нет из-за перевода часов/).waitFor()
     assert.equal(await panel.locator('.scout-schedule-days > li').count(), 2)
@@ -62,6 +66,12 @@ module.exports = async (browser, output) => {
       expected_version: 1,
       enabled: false,
     })
+    await zone.fill('Invalid/Zone')
+    await save.click()
+    await panel.getByText('Укажите доступный часовой пояс IANA', { exact: true }).waitFor()
+    assert.equal(await zone.getAttribute('aria-invalid'), 'true')
+    assert.equal(await panel.locator('.scout-schedule-conflict').count(), 0)
+    await zone.fill('Europe/Moscow')
     // Ordinary edits keep the old revision; explicit rebind adopts the newly approved plan.
     await page.evaluate(() =>
       Object.assign(window.__scoutTest.schedule.context.plan, {
@@ -134,6 +144,20 @@ module.exports = async (browser, output) => {
     )
     await page.evaluate(() => (window.__scoutTest.schedule.error = 0))
     await panel.getByRole('button', { name: 'Обновить расписание', exact: true }).click()
+    // The first read of another job fails before any draft edits.
+    await page.evaluate(() => {
+      const s = window.__scoutTest.schedule
+      Object.assign(s.current, { enabled: true, local_time: '18:30', timezone: 'Europe/Berlin' })
+      s.error = 503
+      s.context.jobId = 'retry-read'
+    })
+    await panel.getByText(/Не удалось прочитать расписание/).waitFor()
+    await page.evaluate(() => (window.__scoutTest.schedule.error = 0))
+    await panel.getByRole('button', { name: 'Обновить расписание', exact: true }).click()
+    assert.equal(await time.inputValue(), '18:30')
+    assert.equal(await zone.inputValue(), 'Europe/Berlin')
+    assert(await panel.getByRole('checkbox').isChecked())
+    assert(await save.isDisabled())
     // Ignore a response captured for the previous job.
     await page.evaluate(() => {
       const s = window.__scoutTest.schedule
@@ -171,6 +195,32 @@ module.exports = async (browser, output) => {
         fullPage: true,
       })
     }
+    // An approved old run may have the same hash as a new, unapproved revision.
+    await page.evaluate(() => {
+      const fixture = window.__scoutTest
+      fixture.job = {
+        public_id: 'renamed-job',
+        revision: {
+          public_id: 'new-revision',
+          approved: false,
+          plan_hash: 'same-hash',
+          fields: [{ name: 'title', kind: 'css', selector: 'h1' }],
+          seed_urls: ['https://books.toscrape.com/'],
+        },
+      }
+      fixture.run = {
+        public_id: 'older-run',
+        job_public_id: fixture.job.public_id,
+        plan_hash: 'same-hash',
+        approved: true,
+        status: 'completed',
+        record_count: 0,
+      }
+      location.hash = '/product?job=renamed-job&run=older-run'
+    })
+    await panel.locator('summary').first().click()
+    await panel.getByText('Расписание ещё не создано.', { exact: true }).waitFor()
+    assert(await create.isDisabled())
     assert.deepEqual(errors, [])
     console.log(
       'Schedule UI: consent, approval, pinned revision, disable, history, conflicts, lost response, permissions, late response and themes passed',

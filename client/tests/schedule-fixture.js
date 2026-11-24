@@ -52,6 +52,18 @@ export function installScheduleFixture(api, fixture, context) {
         return captured
       }
       if (state.error) return fail(state.error, 'denied')
+      if (body.timezone === 'Invalid/Zone') {
+        const error = new Error('Invalid schedule')
+        error.response = {
+          status: 400,
+          data: {
+            code: 'invalid_schedule',
+            detail: 'Укажите доступный часовой пояс IANA',
+            path: '/timezone',
+          },
+        }
+        throw error
+      }
       if (state.conflict && state.current) {
         state.conflict = false
         state.current.version++

@@ -27,9 +27,11 @@ export function useScoutSchedule(jobId, plan, planDirty) {
     historyId = 0,
     disposed = false
   const quiet = { quietStatuses: [400, 401, 403, 404, 409, 429, 500, 502, 503, 504] }
-  const stamp = computed(() => JSON.stringify(scheduleValues(draft)))
+  const initialValues = ref(scheduleValues())
+  const stamp = computed(() => JSON.stringify({ ...draft, timezone: draft.timezone.trim() }))
   const dirty = computed(
-    () => !current.value || stamp.value !== JSON.stringify(scheduleValues(current.value)),
+    () =>
+      stamp.value !== JSON.stringify(current.value ? scheduleValues(current.value) : initialValues.value),
   )
   const candidateReady = computed(() => approvedSchedulePlan(plan.value, planDirty.value))
   const canWrite = computed(
@@ -83,6 +85,7 @@ export function useScoutSchedule(jobId, plan, planDirty) {
           current.value = null
           state.value = 'absent'
           needsReview.value = false
+          if (!keepError) forbidden.value = false
           return null
         }
         state.value = 'error'
@@ -91,7 +94,8 @@ export function useScoutSchedule(jobId, plan, planDirty) {
       }
       const keep = preserveDraft || initialStamp !== stamp.value
       apply(response.data, keep)
-      if (keep && previousVersion && previousVersion !== response.data.version && !keepError) {
+      if (!keepError) forbidden.value = false
+      if (keep && previousVersion !== response.data.version && !keepError) {
         needsReview.value = true
         error.value = { key: 'conflict', detail: '', path: '' }
       }
@@ -141,9 +145,7 @@ export function useScoutSchedule(jobId, plan, planDirty) {
     }
   }
   async function reload() {
-    const data = await read({
-      preserveDraft: current.value ? dirty.value : ['absent', 'error'].includes(state.value),
-    })
+    const data = await read({ preserveDraft: dirty.value })
     if (data) {
       historyId++
       historyLoading.value = false
@@ -172,14 +174,21 @@ export function useScoutSchedule(jobId, plan, planDirty) {
     const body = disableOnly
       ? { expected_version: existing.version, enabled: false }
       : scheduleWrite(draft, existing, plan.value, bindPlan)
+    if (writeMatchesSchedule(existing, body)) return
     writing.value = true
     saved.value = false
     error.value = null
     const preserve = disableOnly && dirty.value
     try {
-      const response = existing
-        ? await apiClient.patch(scoutEndpoints.schedule(id), body, true, quiet)
-        : await apiClient.post(scoutEndpoints.schedule(id), body, true, quiet)
+      const response = await (existing
+        ? apiClient.patch(scoutEndpoints.schedule(id), body, true, quiet)
+        : apiClient.post(scoutEndpoints.schedule(id), body, true, quiet)
+      ).catch((cause) => ({
+        success: false,
+        status: cause?.response?.status,
+        data: cause?.response?.data,
+        message: cause?.message,
+      }))
       if (disposed || owner !== generation) return
       if (response.success) {
         apply(response.data, preserve)
@@ -199,8 +208,6 @@ export function useScoutSchedule(jobId, plan, planDirty) {
         error.value = { ...problem, key: 'conflict' }
       } else if (!problem.status || problem.status >= 500) await reconcile(body, owner)
       else error.value = problem
-    } catch {
-      if (!disposed && owner === generation) await reconcile(body, owner)
     } finally {
       if (owner === generation) writing.value = false
     }
@@ -241,7 +248,8 @@ export function useScoutSchedule(jobId, plan, planDirty) {
       } catch {
         /* Use an explicit UTC default. */
       }
-      Object.assign(draft, { local_time: '09:00', timezone, enabled: false })
+      initialValues.value = { local_time: '09:00', timezone, enabled: false }
+      Object.assign(draft, initialValues.value)
       if (jobId.value) reload()
     },
     { immediate: true, flush: 'sync' },
