@@ -270,3 +270,26 @@ test('all retention UI labels and server protection reasons have translations',a
  const {RETENTION_SCOPES,PROTECTION_REASONS}=await import('../js/retentionState.js')
  for(const lang of Object.values(locales)){for(const scope of RETENTION_SCOPES)assert(lang.scopes[scope]);for(const reason of PROTECTION_REASONS)assert(lang.reasons[reason])}
 })
+
+
+test('comparison links only select saved runs from this Scout and never fetch pasted URLs',async()=>{
+ const {runFromResultLink,resultLink,safeEvidenceLink,comparisonParams}=await import('../js/comparisonState.js')
+ const origin='https://app.example',id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+ assert.equal(runFromResultLink(resultLink(id,origin),origin),id)
+ assert.equal(runFromResultLink('/scout/ux-004?run='+id,origin),id)
+ for(const value of ['https://foreign.example/scout?run='+id,'javascript:alert(1)','/scout?run=x','/other?run='+id,'/scout?run='+id+'&run='+id])assert.equal(runFromResultLink(value,origin),null)
+ assert.equal(safeEvidenceLink('javascript:alert(1)'),null);assert.equal(safeEvidenceLink('https://secret:password@source.example/x'),null)
+ assert.deepEqual(comparisonParams(id,'price','opaque'),{base_run_public_id:id,field:'price',limit:50,cursor:'opaque'})
+})
+
+test('comparison metadata must use two finished runs of the same saved plan; translations cover every status',async()=>{
+ const {compatibleRunMetadata,COMPARISON_STATUSES}=await import('../js/comparisonState.js')
+ const {default:messages}=await import('../js/comparisonLocales.js')
+ const base={public_id:'before',job_public_id:'job',plan_hash:'hash',status:'completed'},target={...base,public_id:'after',status:'completed_with_errors'}
+ assert(compatibleRunMetadata(base,target))
+ for(const changed of [{public_id:'before'},{job_public_id:'other'},{plan_hash:'other'},{status:'running'}])assert.equal(compatibleRunMetadata(base,{...target,...changed}),false)
+ const keys=value=>Object.entries(value).flatMap(([key,child])=>typeof child==='object'?keys(child).map(part=>key+'.'+part):[key]).sort()
+ assert.deepEqual(keys(messages.ru),keys(messages.en));assert.deepEqual(keys(messages.ru),keys(messages.fr))
+ for(const language of Object.values(messages))for(const state of COMPARISON_STATUSES){assert(language.statuses[state]);assert(language.descriptions[state])}
+ assert.equal(displayValue({typed:{status:'ok',type:'integer',value:0}},'missing'),'0')
+})

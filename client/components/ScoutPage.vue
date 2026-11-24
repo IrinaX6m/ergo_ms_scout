@@ -514,6 +514,12 @@ function openSystemSettings() {
             >
               {{ t('scout.workspace.editRules') }}
             </button>
+            <RouterLink
+              v-if="run && ['completed', 'completed_with_errors'].includes(run.status)"
+              :to="{ path: '/scout/compare', query: { target: run.public_id } }"
+              class="btn btn-outline-secondary"
+              >{{ t('scout.comparison.open') }}</RouterLink
+            >
             <div v-if="canExport" class="scout-export">
               <SelectBox
                 id="scout-export"

@@ -1,3 +1,4 @@
+import '../styles/scout-comparison.scss'
 import '../styles/scout-retention.scss'
 import '../styles/scout-workflow.scss'
 import '../prototypes/inspector.scss'
@@ -5,6 +6,11 @@ import '../prototypes/inspector.scss'
 const loadHome = () => import('../components/ScoutPage.vue')
 
 export default {
+  ScoutComparison: {
+    path: '/scout/compare',
+    component: () => import('../components/ScoutComparisonPage.vue'),
+    meta: { titleKey: 'scout.comparison.title', requiresAuth: true },
+  },
   ScoutStorage: {
     path: '/scout/storage',
     component: () => import('../components/ScoutRetentionPage.vue'),
