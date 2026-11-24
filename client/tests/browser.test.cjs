@@ -41,6 +41,7 @@ async function main() {
     await require('./inspector-browser.cjs')(browser, output)
     await require('./visual-browser.cjs')(browser, output)
     await require('./product-browser.cjs')(browser, output)
+    await require('./schedule-browser.cjs')(browser, output)
     page = await browser.newPage({ viewport: { width: 1440, height: 1100 } })
     const errors = []
     page.on('pageerror', (error) => errors.push(error.message))
@@ -112,6 +113,11 @@ async function main() {
     await ui.getByRole('button', { name: 'К подтверждению', exact: true }).click()
     await ui.getByRole('button', { name: 'Подтвердить план и запустить', exact: true }).click()
     await ui.getByRole('button', { name: 'Пауза', exact: true }).waitFor()
+    const schedule = ui.locator('.scout-schedule')
+    await schedule.locator('summary').first().click()
+    await schedule.getByText('Расписание ещё не создано.', { exact: true }).waitFor()
+    assert(await schedule.getByRole('button', { name: 'Создать расписание' }).isEnabled())
+    await schedule.locator('summary').first().click()
     const mutations = await page.evaluate(() =>
       window.__scoutTest.calls
         .filter(([method, url]) => method === 'post' && /\/(approve|start)\/$/.test(url))

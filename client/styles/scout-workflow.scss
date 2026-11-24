@@ -593,3 +593,111 @@
     }
   }
 }
+
+.scout-workflow .scout-schedule {
+  margin-top: 1.5rem;
+  .scout-schedule-summary {
+    padding: 1rem 1.25rem;
+    cursor: pointer;
+  }
+  .scout-schedule-summary span {
+    margin-inline-start: 0.75rem;
+    color: var(--ui-text-muted);
+  }
+  .scout-schedule-content {
+    padding: 0 1.25rem 1.25rem;
+  }
+  .scout-schedule-fields {
+    display: grid;
+    grid-template-columns: minmax(8rem, 0.6fr) minmax(0, 1fr);
+  }
+  .scout-schedule-fields .form-field {
+    display: block;
+    padding: 0.75rem;
+  }
+  .scout-schedule-consent {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    margin: 1rem 0;
+  }
+  .scout-schedule-consent input {
+    flex-shrink: 0;
+    margin-top: 0.35rem;
+  }
+  .scout-schedule-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+  }
+  .scout-schedule-buttons .btn {
+    min-height: 44px;
+    white-space: normal;
+  }
+  .scout-schedule-conflict {
+    padding: 1rem;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+  }
+  .scout-schedule-history {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--ui-border);
+    padding-top: 1rem;
+  }
+  .scout-schedule-days {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0;
+  }
+  .scout-schedule-days > li {
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--ui-border);
+  }
+  .scout-schedule-day-heading {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
+  .scout-schedule-day-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    font-size: 0.8125rem;
+  }
+  .scout-schedule-day-details dt {
+    color: var(--ui-text-muted);
+    font-weight: 400;
+  }
+  .scout-schedule-day-details dd {
+    margin: 0;
+  }
+  code,
+  p,
+  dd {
+    overflow-wrap: anywhere;
+  }
+  code {
+    display: block;
+  }
+  summary:focus-visible {
+    outline: 2px solid var(--ui-accent);
+    outline-offset: -3px;
+  }
+  @media (max-width: 600px) {
+    .scout-schedule-fields {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .scout-schedule-content {
+      padding-inline: 0.75rem;
+    }
+    .scout-schedule-summary {
+      padding-inline: 0.75rem;
+    }
+    .scout-schedule-buttons .btn {
+      width: 100%;
+    }
+  }
+}

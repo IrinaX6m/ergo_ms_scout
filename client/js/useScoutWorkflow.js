@@ -532,6 +532,28 @@ export function useScoutWorkflow() {
     }
   }
 
+  async function refreshScheduleApproval() {
+    const jobId = loadedJob.value
+    const revision = savedRevision.value
+    if (!jobId || !revision?.public_id || revision.approved) return
+    try {
+      const response = await apiClient.get(scoutEndpoints.job(jobId))
+      const latest = response.data?.revision
+      if (
+        response.success &&
+        !disposed &&
+        jobId === query.value.job &&
+        revision === savedRevision.value &&
+        latest?.public_id === revision.public_id &&
+        latest.plan_hash === revision.plan_hash
+      ) {
+        revision.approved = latest.approved === true
+      }
+    } catch (error) {
+      logError('SCOUT: не удалось проверить подтверждение версии для расписания', error)
+    }
+  }
+
   async function confirmAndStart() {
     if (!canConfirm.value) return
     const id = query.value.run
@@ -557,6 +579,7 @@ export function useScoutWorkflow() {
         receiveRun(approved.data)
       }
       if (!planReady.value) return
+      void refreshScheduleApproval()
       const started = await apiClient.post(scoutEndpoints.start(id), {})
       if (disposed || owner !== context || currentOperation !== operation || query.value.run !== id)
         return
@@ -670,7 +693,11 @@ export function useScoutWorkflow() {
     window.clearTimeout(pollTimer)
   })
 
+  const scheduleJobId = computed(() => (loadedJob.value === query.value.job ? loadedJob.value : ''))
+  const schedulePlan = computed(() => (scheduleJobId.value ? savedRevision.value : null))
   return {
+    scheduleJobId,
+    schedulePlan,
     visualPlanValid,
     applySuggestion,
     form,
