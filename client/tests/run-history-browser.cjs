@@ -94,10 +94,7 @@ module.exports = async (browser, output) => {
     await compare.click()
     await page.locator('.scout-comparison-changes > li').first().waitFor()
     for (const theme of ['light', 'dark']) {
-      await page.evaluate(
-        (value) => document.documentElement.setAttribute('data-bs-theme', value),
-        theme,
-      )
+      await page.evaluate((value) => window.__scoutTest.setTheme(value), theme)
       for (const width of [1440, 768, 360, 320]) {
         await page.setViewportSize({ width, height: 1100 })
         const size = await page
@@ -107,6 +104,13 @@ module.exports = async (browser, output) => {
           size.scroll <= size.width + 2,
           `History overflow ${theme}/${width}: ${JSON.stringify(size)}`,
         )
+        for (const input of await history.locator('input[type="radio"]').all()) {
+          const box = await input.boundingBox()
+          assert(
+            box && box.x >= 0 && box.x + box.width <= width,
+            `History choice is offscreen at ${width}`,
+          )
+        }
       }
       await page.screenshot({
         path: path.join(output, `run-history-${theme}-mobile.png`),

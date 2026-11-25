@@ -142,6 +142,7 @@ const h = (key) => t(`scout.comparison.history.${key}`)
           <tbody>
             <tr v-for="row in rows" :key="row.public_id" :data-run="row.public_id">
               <td>
+                <span class="scout-history-mobile-label" aria-hidden="true">{{ h('time') }}</span>
                 <RouterLink
                   :to="{ path: '/scout', query: { job: jobId, run: row.public_id } }"
                   :title="h('open')"
@@ -149,6 +150,7 @@ const h = (key) => t(`scout.comparison.history.${key}`)
                 >
               </td>
               <td>
+                <span class="scout-history-mobile-label" aria-hidden="true">{{ h('state') }}</span>
                 {{ t(`scout.statuses.${row.status}`)
                 }}<span v-if="row.completeness" class="d-block small">{{
                   t(`scout.comparison.${row.completeness === 'complete' ? 'complete' : 'partial'}`)
@@ -157,9 +159,16 @@ const h = (key) => t(`scout.comparison.history.${key}`)
                   h(`reasons.${row.comparison_blocked_reason}`)
                 }}</span>
               </td>
-              <td>{{ row.revision_number }}</td>
-              <td>{{ row.record_count }}</td>
               <td>
+                <span class="scout-history-mobile-label" aria-hidden="true">{{ h('version') }}</span
+                >{{ row.revision_number }}
+              </td>
+              <td>
+                <span class="scout-history-mobile-label" aria-hidden="true">{{ h('count') }}</span
+                >{{ row.record_count }}
+              </td>
+              <td>
+                <span class="scout-history-mobile-label" aria-hidden="true">{{ h('base') }}</span>
                 <input
                   v-model="base"
                   class="form-check-input"
@@ -171,6 +180,7 @@ const h = (key) => t(`scout.comparison.history.${key}`)
                 />
               </td>
               <td>
+                <span class="scout-history-mobile-label" aria-hidden="true">{{ h('target') }}</span>
                 <input
                   v-model="target"
                   class="form-check-input"
@@ -212,3 +222,42 @@ const h = (key) => t(`scout.comparison.history.${key}`)
     </section>
   </FormCard>
 </template>
+<style scoped>
+.scout-history-mobile-label {
+  display: none;
+}
+@media (max-width: 700px) {
+  table {
+    display: block;
+    margin-bottom: 0;
+  }
+  thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  tbody {
+    display: grid;
+    gap: 1rem;
+  }
+  tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+  }
+  td {
+    display: block;
+    min-width: 0;
+    border: 0;
+  }
+  .scout-history-mobile-label {
+    display: block;
+    margin-bottom: 0.35rem;
+    color: var(--ui-text-muted);
+    font-size: 0.75rem;
+  }
+}
+</style>
