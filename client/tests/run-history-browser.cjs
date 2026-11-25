@@ -95,7 +95,7 @@ module.exports = async (browser, output) => {
     await page.locator('.scout-comparison-changes > li').first().waitFor()
     for (const theme of ['light', 'dark']) {
       await page.evaluate(
-        (value) => document.documentElement.setAttribute('data-theme', value),
+        (value) => document.documentElement.setAttribute('data-bs-theme', value),
         theme,
       )
       for (const width of [1440, 768, 360, 320]) {
