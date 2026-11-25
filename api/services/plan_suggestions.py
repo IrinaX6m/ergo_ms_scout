@@ -2,6 +2,7 @@
 
 import json
 import os
+from copy import deepcopy
 from contextvars import copy_context
 from queue import Empty, Queue
 from threading import BoundedSemaphore, Thread
@@ -14,6 +15,7 @@ from src.core.integrations import bridge
 from .errors import ScoutError
 from .html_extract import check_plan_selectors, decode_html
 from .plan import normalize_plan
+from .suggestion_stability import unstable_suggestion_path
 
 _TIMEOUT_SECONDS = 15
 _MODEL_SLOTS = BoundedSemaphore(2)
@@ -30,6 +32,10 @@ _SYSTEM = (
     'with lowercase English names. For one record per page use record=null and scope=page. '
     'Only repeating cards need a record selector and scope=record. '
     'Prefer CSS tags and existing classes/IDs; never invent classes. '
+    'Rules must keep selecting the same elements after titles, prices and other extracted text change. '
+    'Never put an observed title, price, date or amount into a selector predicate. '
+    'For example use h1 and p.price, not //h1[text()="Observed title"] or //p[contains(text(),"51.77")]. '
+    'Fixed label text outside the extracted value may locate a neighbouring value. '
     'Use XPath only when requested; record-relative nested XPath starts with .//. '
     'Set many=false unless lists are requested. TEXT fields must omit conversion. '
     'Do not infer conversion from a currency symbol: money supports RUB only; other currencies stay text. '
@@ -175,8 +181,8 @@ _SINGLE_RESPONSE_SCHEMA = {
 
 
 class SuggestionSelectorError(ScoutError):
-    def __init__(self, code: str, path: str):
-        message = 'Селектор не применился' if code == 'selector' else 'Селектор не нашёл совпадений на снимке'
+    def __init__(self, code: str, path: str, *, message=None):
+        message = message or ('Селектор не применился' if code == 'selector' else 'Селектор не нашёл совпадений на снимке')
         super().__init__(code, message)
         self.path = path
 
@@ -187,7 +193,7 @@ def suggest_plan(snapshot, goal: str) -> dict:
         raise _model_unavailable()
     body = bytes(snapshot.body)
     prompt = json.dumps({'goal': goal, 'html': _sample_html(body, snapshot.charset)}, ensure_ascii=False)
-    response = _generate(prompt, response_schema=_SINGLE_RESPONSE_SCHEMA)
+    response = _generate(prompt, response_schema=_response_schema(goal))
     rules = _read_rules(response)
     try:
         plan = normalize_plan([snapshot.source_url], rules['fields'], record=rules['record'], crawl={'mode': 'pages'})
@@ -197,6 +203,7 @@ def suggest_plan(snapshot, goal: str) -> dict:
     error = check_plan_selectors(body, plan['fields'], plan['record'], charset=snapshot.charset)
     if error is not None:
         raise SuggestionSelectorError(*error)
+    _check_stability(body, plan['fields'], plan['record'], charset=snapshot.charset)
     draft = {
         'seed_urls': plan['seed_urls'], 'crawl': {'mode': 'pages'},
         'record': plan['record'], 'fields': plan['fields'],
@@ -204,6 +211,23 @@ def suggest_plan(snapshot, goal: str) -> dict:
     if snapshot.proxy_profile_revision_public_id:
         draft['proxy_profile_revision_public_id'] = str(snapshot.proxy_profile_revision_public_id)
     return draft
+
+
+def _response_schema(goal):
+    schema = deepcopy(_SINGLE_RESPONSE_SCHEMA)
+    if 'xpath' not in goal.casefold():
+        schema['properties']['record']['anyOf'][1]['properties']['kind']['enum'] = ['css']
+        schema['properties']['fields']['items']['properties']['kind']['enum'] = ['css']
+    return schema
+
+
+def _check_stability(body, fields, record, *, charset=''):
+    path = unstable_suggestion_path(body, fields, record, charset=charset)
+    if path:
+        raise SuggestionSelectorError('selector', path, message=(
+            'Правило зависит от текущего текста или цены. Запросите новое предложение '
+            'либо задайте правило по структуре страницы вручную.'
+        ))
 
 
 def _sample_html(body: bytes, charset: str, max_bytes=_MAX_SAMPLE_BYTES) -> str:
