@@ -8,6 +8,7 @@ from ..services.errors import ScoutError
 from ..services.plan_suggestions import _generate
 
 
+@override_settings(SCOUT_AI_LOCAL_ONLY=False)
 class ScoutAIModelTests(SimpleTestCase):
     def test_explicit_model_uses_provider_profile_and_blank_preserves_default(self):
         with patch('modules.scout.api.services.plan_suggestions.bridge') as provider:
@@ -20,6 +21,27 @@ class ScoutAIModelTests(SimpleTestCase):
                 _generate('sample')
                 self.assertNotIn('model',provider.call.call_args.kwargs['config'])
                 self.assertFalse(provider.call.call_args.kwargs['skip_env_injection'])
+
+    @override_settings(SCOUT_AI_LOCAL_ONLY=True, BRIDGE_TRANSPORT='local')
+    def test_strict_local_mode_requires_explicit_model_and_reaches_provider(self):
+        with patch('modules.scout.api.services.plan_suggestions.bridge') as provider:
+            provider.call.return_value = '{}'
+            with override_settings(SCOUT_AI_MODEL='qwen3.5:4b'):
+                _generate('sample')
+                self.assertEqual(provider.call.call_args.args, ('ollama_framework.chat_local',))
+                self.assertEqual(provider.call.call_args.kwargs['model'], 'qwen3.5:4b')
+            provider.reset_mock()
+            with override_settings(SCOUT_AI_MODEL=''):
+                with self.assertRaises(ScoutError):
+                    _generate('sample')
+            provider.call.assert_not_called()
+
+    @override_settings(SCOUT_AI_LOCAL_ONLY=True, SCOUT_AI_MODEL='qwen3.5:4b', BRIDGE_TRANSPORT='http')
+    def test_strict_local_mode_blocks_http_bridge_before_sending_prompt(self):
+        with patch('modules.scout.api.services.plan_suggestions.bridge') as provider:
+            with self.assertRaises(ScoutError):
+                _generate('private sample')
+            provider.call.assert_not_called()
 
     def test_bad_server_model_does_not_call_provider(self):
         with patch('modules.scout.api.services.plan_suggestions.bridge') as provider:

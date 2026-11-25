@@ -150,6 +150,7 @@ class DispatchRequestTests(TestCase):
         self.assertIsNone(self.run.dispatch_requested_until)
 
 
+@override_settings(SCOUT_AI_LOCAL_ONLY=False)
 class FlowTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(

@@ -230,6 +230,11 @@ def _generate(prompt: str, *, system_prompt=None, response_schema=None) -> objec
     if not isinstance(model, str) or len(model) > 200 or any(ord(char) < 32 for char in model):
         raise _model_unavailable()
     model = model.strip()
+    local_only = str(getattr(settings, 'SCOUT_AI_LOCAL_ONLY', os.environ.get('SCOUT_AI_LOCAL_ONLY', ''))).strip().lower() in {'1', 'true', 'yes', 'on'}
+    if local_only and not model:
+        raise _model_unavailable()
+    if local_only and str(getattr(settings, 'BRIDGE_TRANSPORT', os.environ.get('BRIDGE_TRANSPORT', 'local'))).strip().lower() != 'local':
+        raise _model_unavailable()
     configured = getattr(settings, 'SCOUT_AI_TIMEOUT_SECONDS', os.environ.get('SCOUT_AI_TIMEOUT_SECONDS'))
     try:
         timeout = _TIMEOUT_SECONDS if configured is None else max(1, min(60, int(configured)))
@@ -242,18 +247,26 @@ def _generate(prompt: str, *, system_prompt=None, response_schema=None) -> objec
     # Таймаут ответа API не прерывает вызов моста. Место освобождает сам вызов.
     def invoke():
         try:
-            response = bridge.call(
-                'ollama_framework.chat', **({'format': response_schema} if response_schema is not None else {}), messages=[
-                    {'role': 'system', 'content': system_prompt or _SYSTEM},
-                    {'role': 'user', 'content': prompt},
-                ],
-                temperature=0, num_predict=4096, skip_env_injection=bool(model),
-                config={
-                    'request_timeout': timeout, 'max_retries': 0, 'keep_alive': '5m',
-                    'provider_config': {'think': False},
-                    **({'model': model} if model else {}),
-                },
-            )
+            messages = [
+                {'role': 'system', 'content': system_prompt or _SYSTEM},
+                {'role': 'user', 'content': prompt},
+            ]
+            structured = {'format': response_schema} if response_schema is not None else {}
+            if local_only:
+                response = bridge.call(
+                    'ollama_framework.chat_local', messages=messages, model=model,
+                    timeout=timeout, num_predict=512, **structured,
+                )
+            else:
+                response = bridge.call(
+                    'ollama_framework.chat', messages=messages, **structured,
+                    temperature=0, num_predict=4096, skip_env_injection=bool(model),
+                    config={
+                        'request_timeout': timeout, 'max_retries': 0, 'keep_alive': '5m',
+                        'provider_config': {'think': False},
+                        **({'model': model} if model else {}),
+                    },
+                )
         except Exception:
             response = None
         finally:
