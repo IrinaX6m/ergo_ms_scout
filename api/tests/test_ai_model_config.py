@@ -29,3 +29,16 @@ class ScoutAIModelTests(SimpleTestCase):
                         _generate('sample')
                     self.assertEqual(failure.exception.code,'model_unavailable')
             provider.call.assert_not_called()
+
+
+class ScoutAISampleBudgetTests(SimpleTestCase):
+    def test_indentation_does_not_hide_fields_beyond_prompt_budget(self):
+        from ..services.plan_suggestions import _sample_html
+        body = ('<html><body>' + ' \n' * 18000
+                + '<h1>  Book  </h1><p class="price">£51.77</p>'
+                + ' \n' * 18000 + '</body></html>').encode('utf-8')
+        sample = _sample_html(body, 'utf-8', max_bytes=256)
+        self.assertIn('>  Book  <', sample)
+        self.assertIn('class="price"', sample)
+        self.assertIn('£51.77', sample)
+        self.assertLessEqual(len(sample.encode('utf-8')), 256)
